@@ -1,8 +1,4 @@
-# 🎮 Game Edukasi Tata Surya VR/AR Multiplayer  
-### Program Kreativitas Mahasiswa - Karsa Cipta (PKM-KC)  
-Kementerian Pendidikan, Kebudayaan, Riset, dan Teknologi (Kemendikbudristek)
 
----
 
 ## 🏫 Latar Belakang  
 Pembelajaran sistem tata surya di sekolah umumnya masih bersifat konvensional (buku, gambar, video 2D) yang kurang interaktif.  
@@ -38,12 +34,7 @@ Produk ini dirancang sebagai inovasi pendidikan dalam program **PKM-KC** untuk m
 - **Multiplayer Real-Time** → Semua pemain melihat hasil yang sama.  
 - **Feedback Visual & Audio** → Menandai jawaban benar/salah secara interaktif.  
 
----
 
-## 👥 Tim PKM  
-- **Ketua:** 
-- **Anggota:**   
-- **Dosen Pembimbing:** 
 
 
 ## 📄 Lisensi  
