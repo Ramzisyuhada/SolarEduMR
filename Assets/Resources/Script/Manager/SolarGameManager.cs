@@ -9,7 +9,7 @@ public class SolarGameManager : NetworkBehaviour
     [Header("Config")]
     public float roundSeconds = 180f;
     public Transform spawnArea;          // area acak untuk spawn planet (opsional)
-    public Planets[] planets;             // diisi OrbitGenerator.AutoAssignToManager()
+    public Planet[] planets;             // diisi OrbitGenerator.AutoAssignToManager()
     public OrbitSlot[] slots;            // diisi OrbitGenerator.AutoAssignToManager()
 
     [Header("State (Network)")]
@@ -61,10 +61,10 @@ public class SolarGameManager : NetworkBehaviour
         phase.Value = GamePhase.Lobby;
     }
 
-    public bool CheckOrderServer(out Planets[] wrongOnes)
+    public bool CheckOrderServer(out Planet[] wrongOnes)
     {
         bool allCorrect = true;
-        var wrong = new System.Collections.Generic.List<Planets>();
+        var wrong = new System.Collections.Generic.List<Planet>();
 
         foreach (var p in planets)
         {
@@ -110,7 +110,7 @@ public class SolarGameManager : NetworkBehaviour
         if (!IsServer) return;
         phase.Value = GamePhase.Scoring;
 
-        Planets[] wrong;
+        Planet[] wrong;
         bool allCorrect = CheckOrderServer(out wrong);
 
         int correct = planets.Length - wrong.Length;
@@ -187,4 +187,7 @@ public class SolarGameManager : NetworkBehaviour
     {
         if (phase.Value == GamePhase.Playing) DoScoringServer();
     }
+
+  
+
 }

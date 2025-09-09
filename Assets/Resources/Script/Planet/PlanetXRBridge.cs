@@ -5,13 +5,13 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 [RequireComponent(typeof(XRGrabInteractable))]
 public class PlanetXRBridge : MonoBehaviour
 {
-    public Planets planet;
+    public Planet planet;
     XRGrabInteractable _grab;
 
     void Awake()
     {
         _grab = GetComponent<XRGrabInteractable>();
-        if (!planet) planet = GetComponent<Planets>();
+        if (!planet) planet = GetComponent<Planet>();
     }
 
     void OnEnable()

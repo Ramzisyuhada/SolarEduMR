@@ -52,7 +52,7 @@ public class OrbitGenerator : MonoBehaviour
     public void AutoAssignToManager()
     {
         var mgr = GetOrFindManager(); if (!mgr) return;
-        var planets = planetsParent.GetComponentsInChildren<Planets>(true);
+        var planets = planetsParent.GetComponentsInChildren<Planet>(true);
         var slots = orbitParent.GetComponentsInChildren<OrbitSlot>(true);
         mgr.planets = planets.OrderBy(p => p.IdUrutanBenar).ToArray();
         mgr.slots = slots.OrderBy(s => s.Index).ToArray();
@@ -85,18 +85,22 @@ public class OrbitGenerator : MonoBehaviour
 
     void GenerateOrbitsInternal()
     {
+        // Bersihkan orbit lama
         for (int i = orbitParent.childCount - 1; i >= 0; i--)
             DestroyImmediate(orbitParent.GetChild(i).gameObject);
 
         for (int i = 0; i < jumlahOrbit; i++)
         {
+            // Hitung radius orbit ke-i
             float radius = radiusAwal + i * jarakAntarOrbit;
+
+            // Root orbit
             GameObject orbitGO = new GameObject($"OrbitSlot_{i + 1}");
             orbitGO.transform.SetParent(orbitParent);
             orbitGO.transform.localPosition = Vector3.zero;
             orbitGO.transform.localRotation = Quaternion.identity;
 
-            // LineRenderer orbit
+            // Garis orbit (visual)
             var line = orbitGO.AddComponent<LineRenderer>();
             line.useWorldSpace = false;
             line.loop = true;
@@ -104,23 +108,48 @@ public class OrbitGenerator : MonoBehaviour
             line.positionCount = Mathf.Max(segmentsLingkaran, 32);
             for (int j = 0; j < line.positionCount; j++)
             {
-                float angle = j * 2 * Mathf.PI / line.positionCount;
-                Vector3 pos = new Vector3(Mathf.Cos(angle) * radius, 0, Mathf.Sin(angle) * radius);
-                line.SetPosition(j, pos);
+                float ang = j * 2 * Mathf.PI / line.positionCount;
+                Vector3 p = new Vector3(Mathf.Cos(ang) * radius, 0, Mathf.Sin(ang) * radius);
+                line.SetPosition(j, p);
             }
 
-            // SnapPoint
+            // SnapPoint menghadap keluar lingkaran
             GameObject snapPoint = new GameObject("SnapPoint");
             snapPoint.transform.SetParent(orbitGO.transform);
             snapPoint.transform.localPosition = new Vector3(radius, 0, 0);
             snapPoint.transform.localRotation = Quaternion.LookRotation(snapPoint.transform.localPosition.normalized, Vector3.up);
 
-            // OrbitSlot component
+            // Komponen OrbitSlot
             var slot = orbitGO.AddComponent<OrbitSlot>();
             slot.Index = i + 1;
             slot.SnapPoint = snapPoint.transform;
 
-            // Prefab visual per orbit
+            // === Collider melingkar (SphereCollider rapat) ===
+            // Atur kepadatan & ukuran sphere di sini
+            const int colliderCount = 48;    // makin besar = makin rapat (mis. 48/64)
+            const float sphereRadius = 0.02f; // ukuran tiap sphere trigger
+
+            float angleStep = 360f / colliderCount;
+            for (int c = 0; c < colliderCount; c++)
+            {
+                float angDeg = c * angleStep;
+                Vector3 localPos = Quaternion.Euler(0, angDeg, 0) * new Vector3(radius, 0, 0);
+
+                GameObject colGO = new GameObject($"Collider_{c}");
+                colGO.transform.SetParent(orbitGO.transform);
+                colGO.transform.localPosition = localPos;
+                colGO.transform.localRotation = Quaternion.identity;
+
+                var sphere = colGO.AddComponent<SphereCollider>();
+                sphere.isTrigger = true;
+                sphere.radius = sphereRadius;
+
+                // Forward event trigger dari child ke OrbitSlot (parent)
+                var fwd = colGO.AddComponent<OrbitTriggerForwarder>();
+                fwd.parentSlot = slot;
+            }
+
+            // Prefab visual opsional per-orbit
             GameObject orbitPrefab = null;
             if (orbitSlotPrefabs != null && i < orbitSlotPrefabs.Length && orbitSlotPrefabs[i])
                 orbitPrefab = orbitSlotPrefabs[i];
@@ -132,9 +161,27 @@ public class OrbitGenerator : MonoBehaviour
                 var visual = Instantiate(orbitPrefab, orbitGO.transform);
                 visual.transform.localPosition = Vector3.zero;
                 visual.transform.localRotation = Quaternion.identity;
+
+                // Kalau OrbitSlot.ringRenderer belum diisi, coba auto-assign dari visual
+                if (!slot.ringRenderer)
+                {
+                    var rend = visual.GetComponentInChildren<Renderer>();
+                    if (rend) slot.ringRenderer = rend;
+                }
+            }
+            else
+            {
+                // fallback: coba pakai LineRenderer sebagai renderer untuk highlight (jika materialnya mendukung _Color)
+                if (!slot.ringRenderer)
+                {
+                    var rend = orbitGO.GetComponent<Renderer>();
+                    if (rend) slot.ringRenderer = rend;
+                }
             }
         }
     }
+
+
 
     void GeneratePlanetsInternal()
     {
@@ -189,7 +236,7 @@ public class OrbitGenerator : MonoBehaviour
             go.transform.rotation = rot;
 
             // Planet.cs config
-            var planet = go.GetComponent<Planets>();
+            var planet = go.GetComponent<Planet>();
             if (planet)
             {
                 planet.PlanetName = pName;
