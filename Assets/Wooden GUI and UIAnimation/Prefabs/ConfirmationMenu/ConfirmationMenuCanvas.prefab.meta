@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: ead464cdede1bc94a8cda69309af1c36
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 314751
+  packageName: Wooden GUI + UI Animation | Demo
+  packageVersion: 1.0
+  assetPath: Assets/Wooden GUI and UIAnimation/Prefabs/ConfirmationMenu/ConfirmationMenuCanvas.prefab
+  uploadId: 749071

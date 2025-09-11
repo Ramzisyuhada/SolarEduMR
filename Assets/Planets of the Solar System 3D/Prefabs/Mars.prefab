@@ -4975,8 +4975,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Planet
   ShowTopMostFoldoutHeaderGroup: 1
-  PlanetName: 
-  IdUrutanBenar: 0
+  PlanetName: Mars
+  IdUrutanBenar: 4
   CurrentOrbitIndex:
     m_InternalValue: 0
   NetPos:
@@ -4986,6 +4986,11 @@ MonoBehaviour:
   manager: {fileID: 0}
   maxSnapDistance: 0.35
   orientToSnapPoint: 1
+  orbitWhenSnapped: 1
+  orbitSpeedDeg: 20
+  selfSpinDeg: 50
+  orbitPlaneTiltDeg: 0
+  currentSlot: {fileID: 0}
 --- !u!54 &8535337712038769744
 Rigidbody:
   m_ObjectHideFlags: 0

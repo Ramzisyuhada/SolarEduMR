@@ -1,25 +1,21 @@
 using UnityEngine;
 using Unity.Netcode;
 
-[DisallowMultipleComponent]
 public class OrbitSlot : NetworkBehaviour
 {
     [Range(1, 32)] public int Index = 1;
     public Transform SnapPoint;
 
-    [Header("Snap via Release (gunakan trigger child untuk kandidat)")]
-    public bool snapOnEnter = false;     // PASTIKAN false untuk “snap saat dilepas”
-    public bool orientToSnapPoint = true;
+    [Header("Snap/Visual")]
+    public Renderer ringRenderer;
+    public Color highlightColor = new(1f, 0.85f, 0.1f, 1f);
+    public Color correctColor = new(0.2f, 0.95f, 0.2f, 1f);
+    public Color wrongColor = new(0.95f, 0.25f, 0.25f, 1f);
 
-    [Header("Feedback (opsional)")]
-    public Color blinkColor = new(1f, .6f, .1f, 1f);
-    public float blinkTime = .25f;
-
-    Material[] _mats; Color[] _origCols;
-    [Header("Highlight Orbit")]
-    public Renderer ringRenderer;          // drag ring visual (LineRenderer/Mesh) ke sini
-    public Color highlightColor = Color.yellow;
-    private Color[] defaultColors;         // warna asli material orbit
+    // --- state visual
+    Material[] _mats;
+    Color[] _defaults;
+    bool _resultLocked; // <- jika true, warna tidak diubah oleh trigger
 
     void Awake()
     {
@@ -28,88 +24,87 @@ public class OrbitSlot : NetworkBehaviour
             var sp = transform.Find("SnapPoint");
             if (sp) SnapPoint = sp;
         }
-        if (ringRenderer)
-        {
-            var mats = ringRenderer.materials;
-            defaultColors = new Color[mats.Length];
-            for (int i = 0; i < mats.Length; i++)
-                if (mats[i].HasProperty("_Color"))
-                    defaultColors[i] = mats[i].color;
-        }
+        CacheDefaults();
     }
-    void SetRingColor(Color c)
+
+    void CacheDefaults()
     {
         if (!ringRenderer) return;
-        var mats = ringRenderer.materials;
-        for (int i = 0; i < mats.Length; i++)
-            if (mats[i].HasProperty("_Color"))
-                mats[i].color = c;
+        _mats = ringRenderer.materials; // instance materials (bukan shared)
+        _defaults = new Color[_mats.Length];
+        for (int i = 0; i < _mats.Length; i++)
+            _defaults[i] = GetMatColor(_mats[i], Color.white);
     }
 
-    void RestoreDefaultColor()
-    {
-        if (!ringRenderer || defaultColors == null) return;
-        var mats = ringRenderer.materials;
-        for (int i = 0; i < mats.Length; i++)
-            if (mats[i].HasProperty("_Color"))
-                mats[i].color = defaultColors[i];
-    }
-
-
-    // ===== dipanggil dari child via forwarder =====
+    // === dipanggil forwarder dari child collider ===
     public void OnChildTriggerEnter(Collider other)
     {
-        Debug.Log("Hello world");
-        var planet = other.GetComponentInParent<Planet>();
-        if (!planet) return;
+        if (_resultLocked) return;     // <- JANGAN ubah kalau sudah hasil
+        var p = other.GetComponentInParent<Planet>();
+        if (!p) return;
 
-        // Ganti warna saat planet masuk trigger
         SetRingColor(highlightColor);
 
-        if (IsServer) planet.RegisterCandidate(Index, true);
-        else planet.RegisterCandidateServerRpc(Index, true);
+        if (IsServer) p.RegisterCandidate(Index, true);
+        else p.RegisterCandidateServerRpc(Index, true);
     }
 
     public void OnChildTriggerExit(Collider other)
     {
-        var planet = other.GetComponentInParent<Planet>();
-        if (!planet) return;
+        if (_resultLocked) return;     // <- JANGAN ubah kalau sudah hasil
+        var p = other.GetComponentInParent<Planet>();
+        if (!p) return;
 
-        // Balik ke warna semula saat planet keluar trigger
         RestoreDefaultColor();
 
-        if (IsServer) planet.RegisterCandidate(Index, false);
-        else planet.RegisterCandidateServerRpc(Index, false);
+        if (IsServer) p.RegisterCandidate(Index, false);
+        else p.RegisterCandidateServerRpc(Index, false);
     }
 
-
-    // ===== opsional visual =====
-    public void ClearHighlight()
+    // === dipanggil GameManager saat tombol "Cek" ===
+    public void ApplyResultColor(bool isCorrect)
     {
-        if (_mats == null) return;
+        _resultLocked = true; // <- kunci supaya tidak ditimpa trigger
+        SetRingColor(isCorrect ? correctColor : wrongColor);
+    }
+
+    // === dipanggil saat reset ronde ===
+    public void ClearResultLock()
+    {
+        _resultLocked = false;
+        RestoreDefaultColor();
+    }
+
+    public void RestoreDefaultColor()
+    {
+        if (!ringRenderer || _mats == null || _defaults == null) return;
         for (int i = 0; i < _mats.Length; i++)
-            if (_mats[i].HasProperty("_Color")) _mats[i].color = _origCols[i];
+            SetMatColor(_mats[i], _defaults[i]);
     }
 
-    public void BlinkFeedback()
+    void SetRingColor(Color c)
     {
-        if (!isActiveAndEnabled || _mats == null) return;
-        StopAllCoroutines();
-        StartCoroutine(BlinkCo());
+        if (!ringRenderer) return;
+        if (_mats == null || _mats.Length == 0) CacheDefaults();
+        for (int i = 0; i < _mats.Length; i++)
+            SetMatColor(_mats[i], c);
     }
 
-    System.Collections.IEnumerator BlinkCo()
+    // --- dukung URP Lit (_BaseColor) & Standard (_Color)
+    static Color GetMatColor(Material m, Color fallback)
     {
-        float t = 0f;
-        while (t < blinkTime)
-        {
-            t += Time.deltaTime;
-            float f = Mathf.PingPong(t * 8f, 1f);
-            for (int i = 0; i < _mats.Length; i++)
-                if (_mats[i].HasProperty("_Color"))
-                    _mats[i].color = Color.Lerp(_origCols[i], blinkColor, f);
-            yield return null;
-        }
-        ClearHighlight();
+        if (!m) return fallback;
+        if (m.HasProperty("_BaseColor")) return m.GetColor("_BaseColor");
+        if (m.HasProperty("_Color")) return m.color;
+        return fallback;
     }
+    static void SetMatColor(Material m, Color c)
+    {
+        if (!m) return;
+        if (m.HasProperty("_BaseColor")) { m.SetColor("_BaseColor", c); return; }
+        if (m.HasProperty("_Color")) { m.color = c; return; }
+    }
+
+    // (opsional) efek blink saat snap
+    public void BlinkFeedback() { /* ... */ }
 }

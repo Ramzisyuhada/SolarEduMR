@@ -5153,8 +5153,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Planet
   ShowTopMostFoldoutHeaderGroup: 1
-  PlanetName: 
-  IdUrutanBenar: 0
+  PlanetName: Mercury
+  IdUrutanBenar: 1
   CurrentOrbitIndex:
     m_InternalValue: 0
   NetPos:
@@ -5164,6 +5164,11 @@ MonoBehaviour:
   manager: {fileID: 0}
   maxSnapDistance: 0.35
   orientToSnapPoint: 1
+  orbitWhenSnapped: 1
+  orbitSpeedDeg: 20
+  selfSpinDeg: 50
+  orbitPlaneTiltDeg: 0
+  currentSlot: {fileID: 0}
 --- !u!54 &5952768789044539837
 Rigidbody:
   m_ObjectHideFlags: 0

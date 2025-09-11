@@ -38,6 +38,9 @@ public class OrbitGenerator : MonoBehaviour
     public float scatterRadius = 0.6f;
     public float randomY = 0.0f;
     public float defaultPlanetScale = 0.25f;
+
+    [Header("Planet Naming")]
+    public bool gunakanNamaPrefab = true;  // true = ambil nama dari prefab; false = pakai planetNames[]
     public string[] planetNames = new string[]
     { "Merkurius","Venus","Bumi","Mars","Jupiter","Saturnus","Uranus","Neptunus" };
 
@@ -125,9 +128,8 @@ public class OrbitGenerator : MonoBehaviour
             slot.SnapPoint = snapPoint.transform;
 
             // === Collider melingkar (SphereCollider rapat) ===
-            // Atur kepadatan & ukuran sphere di sini
-            const int colliderCount = 48;    // makin besar = makin rapat (mis. 48/64)
-            const float sphereRadius = 0.02f; // ukuran tiap sphere trigger
+            const int colliderCount = 48;     // makin besar = makin rapat (mis. 48/64)
+            const float sphereRadius = 0.02f; // sesuaikan dg ukuran planet & akurasi snap
 
             float angleStep = 360f / colliderCount;
             for (int c = 0; c < colliderCount; c++)
@@ -162,7 +164,7 @@ public class OrbitGenerator : MonoBehaviour
                 visual.transform.localPosition = Vector3.zero;
                 visual.transform.localRotation = Quaternion.identity;
 
-                // Kalau OrbitSlot.ringRenderer belum diisi, coba auto-assign dari visual
+                // Auto-assign renderer utk highlight bila kosong
                 if (!slot.ringRenderer)
                 {
                     var rend = visual.GetComponentInChildren<Renderer>();
@@ -171,7 +173,6 @@ public class OrbitGenerator : MonoBehaviour
             }
             else
             {
-                // fallback: coba pakai LineRenderer sebagai renderer untuk highlight (jika materialnya mendukung _Color)
                 if (!slot.ringRenderer)
                 {
                     var rend = orbitGO.GetComponent<Renderer>();
@@ -181,8 +182,6 @@ public class OrbitGenerator : MonoBehaviour
         }
     }
 
-
-
     void GeneratePlanetsInternal()
     {
         if ((planetPrefabs == null || planetPrefabs.Length == 0) && !defaultPlanetPrefab)
@@ -191,17 +190,24 @@ public class OrbitGenerator : MonoBehaviour
             return;
         }
 
+        // bersihkan planet lama
         for (int i = planetsParent.childCount - 1; i >= 0; i--)
             DestroyImmediate(planetsParent.GetChild(i).gameObject);
 
-        int count = Mathf.Min(jumlahOrbit, planetNames != null ? planetNames.Length : jumlahOrbit);
+        int count = Mathf.Min(jumlahOrbit, Mathf.Max(
+            planetNames != null ? planetNames.Length : 0,
+            planetPrefabs != null ? planetPrefabs.Length : 0,
+            jumlahOrbit
+        ));
+
         var slots = orbitParent.GetComponentsInChildren<OrbitSlot>(true).OrderBy(s => s.Index).ToArray();
+
+        // anti-duplikat nama
+        var nameCounter = new System.Collections.Generic.Dictionary<string, int>();
 
         for (int idx = 0; idx < count; idx++)
         {
-            string pName = planetNames != null && idx < planetNames.Length ? planetNames[idx] : $"Planet_{idx + 1}";
-
-            // prefab per orbit → fallback ke default
+            // pilih prefab per orbit (urutan prefab = urutan benar)
             GameObject prefabToUse = null;
             if (planetPrefabs != null && idx < planetPrefabs.Length && planetPrefabs[idx])
                 prefabToUse = planetPrefabs[idx];
@@ -214,8 +220,26 @@ public class OrbitGenerator : MonoBehaviour
                 continue;
             }
 
+            // tentukan nama planet
+            string baseName;
+            if (gunakanNamaPrefab)
+            {
+                baseName = CleanPrefabName(prefabToUse.name);
+            }
+            else
+            {
+                baseName = (planetNames != null && idx < planetNames.Length && !string.IsNullOrWhiteSpace(planetNames[idx]))
+                    ? planetNames[idx]
+                    : CleanPrefabName(prefabToUse.name);
+            }
+
+            if (!nameCounter.ContainsKey(baseName)) nameCounter[baseName] = 0;
+            nameCounter[baseName]++;
+            string finalName = (nameCounter[baseName] > 1) ? $"{baseName}_{nameCounter[baseName]}" : baseName;
+
+            // instantiate
             var go = Instantiate(prefabToUse, planetsParent);
-            go.name = $"Planet_{idx + 1}_{pName}";
+            go.name = $"Planet_{idx + 1}_{finalName}";
             go.transform.localScale = Vector3.one * defaultPlanetScale;
 
             // posisi awal
@@ -228,28 +252,34 @@ public class OrbitGenerator : MonoBehaviour
             else
             {
                 Vector2 r = Random.insideUnitCircle * scatterRadius;
-                pos = new Vector3(orbitParent.position.x + r.x, orbitParent.position.y, orbitParent.position.z + r.y);
+                pos = new Vector3(orbitParent.position.x + r.x,
+                                  orbitParent.position.y + randomY,
+                                  orbitParent.position.z + r.y);
                 rot = Quaternion.identity;
             }
 
-            go.transform.position = pos;
-            go.transform.rotation = rot;
+            go.transform.SetPositionAndRotation(pos, rot);
 
             // Planet.cs config
             var planet = go.GetComponent<Planet>();
             if (planet)
             {
-                planet.PlanetName = pName;
-                planet.IdUrutanBenar = idx + 1;
+                planet.PlanetName = finalName;
+                planet.IdUrutanBenar = idx + 1; // <<< urutan benar mengikuti urutan prefab / generate
                 if (!planet.manager) planet.manager = GetOrFindManager();
 #if UNITY_EDITOR
                 planet.NetPos.Value = go.transform.position;
                 planet.NetRot.Value = go.transform.rotation;
 #endif
             }
+            else
+            {
+                Debug.LogWarning($"[OrbitGenerator] Prefab tidak punya Planet.cs: {go.name}");
+            }
         }
     }
 
+    // ====== TABLE INFO ======
     void GetTableInfo(out Vector3 center, out Vector2 sizeXZ, out float topY)
     {
         if (tableCollider)
@@ -279,6 +309,7 @@ public class OrbitGenerator : MonoBehaviour
         topY = t.position.y;
     }
 
+    // ====== UTIL ======
     void EnsureParents()
     {
         if (!orbitParent)
@@ -303,5 +334,13 @@ public class OrbitGenerator : MonoBehaviour
     {
         if (!gameManager) gameManager = FindObjectOfType<SolarGameManager>();
         return gameManager;
+    }
+
+    // ====== HELPERS ======
+    string CleanPrefabName(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "Planet";
+        string s = raw.Replace("(Clone)", "").Trim();
+        return s;
     }
 }
