@@ -1,11 +1,12 @@
 ﻿using UnityEngine;
 using Unity.Netcode;
 using System.Collections.Generic;
+using System;
 
 public class PlanetCarousel3DUI_Net : NetworkBehaviour
 {
-    [Header("Data & Prefab")]
-    public PlanetData[] dataList;
+    [Header("Data & Prefab (jumlah sebaiknya sama)")]
+    public PlanetData[] dataList;           // pastikan PlanetData.audioClip diisi
     public GameObject[] planetPrefabs;
 
     [Header("Anchor & Layout 3D")]
@@ -28,77 +29,300 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
     public bool addAutoSpinIfMissing = true;
     public float selfSpinDeg = 25f;
 
-    [Header("UI Panels (semua ikut sinkron)")]
-    public PlanetInfoUI[] infoUIPanels;       // drag manual atau auto cari
-    public bool autoFindInfoPanels = true;    // cari otomatis saat OnNetworkSpawn
+    [Header("UI Panels (sinkron semua klien)")]
+    public PlanetInfoUI[] infoUIPanels;     // drag manual atau auto find
+    public bool autoFindInfoPanels = true;  // cari otomatis saat OnNetworkSpawn
+
+    [Header("Audio (sinkron)")]
+    public AudioSource audioSource;         // assign di inspector
+    public bool playAudioOnChange = true;   // auto play ketika index berubah
+    public bool loopAudio = false;
+    [Range(0f, 1f)] public float audioVolume = 1f;
+    public bool restartIfSameClip = true;
+    [Tooltip("Lead time sync; jadwalkan start sedikit ke depan biar semua sempat ‘baris’.")]
+    public double audioSyncLeadSeconds = 0.12;   // 120 ms mulus
+    [Tooltip("Headroom minimum supaya tidak start di masa lalu.")]
+    public double minStartHeadroom = 0.02;       // 20 ms
 
     // Event global opsional
-    public static System.Action<PlanetData> OnPlanetInfoChanged;
+    public static Action<PlanetData> OnPlanetInfoChanged;
 
     // Runtime
-    readonly List<GameObject> _instances = new();
-    bool _animating;
+    private readonly List<GameObject> _instances = new();
+    private bool _animating;
 
-    // Network index planet aktif
-    private NetworkVariable<int> currentIndex = new(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Network: index planet aktif
+    private NetworkVariable<int> currentIndex = new(
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
 
-    void Awake()
+    // ===== Helpers jumlah item =====
+    private int CountPrefabs => planetPrefabs != null ? planetPrefabs.Length : 0;
+    private int CountData => dataList != null ? dataList.Length : 0;
+    private int Count => Mathf.Max(CountPrefabs, CountData);
+
+    // ===== Lifecycle =====
+    private void Awake()
     {
         if (!anchor) anchor = transform;
-        int n = Mathf.Max(dataList != null ? dataList.Length : 0,
-                          planetPrefabs != null ? planetPrefabs.Length : 0);
+
+        int n = Count;
         for (int i = 0; i < n; i++) _instances.Add(null);
+
+        if (n == 0)
+            Debug.LogWarning("[Planet] Tidak ada data/prefab. Carousel idle.");
+        else if (CountPrefabs != CountData)
+            Debug.LogWarning($"[Planet] Jumlah data ({CountData}) != prefabs ({CountPrefabs}). 3D pakai {Count} item; UI/Audio di-guard.");
     }
 
     public override void OnNetworkSpawn()
     {
-        // Cari otomatis semua panel jika autoFind aktif
         if (autoFindInfoPanels && (infoUIPanels == null || infoUIPanels.Length == 0))
             infoUIPanels = FindObjectsOfType<PlanetInfoUI>(true);
 
-        // Set listener: tiap index berubah → update planet & UI semua pemain
-        currentIndex.OnValueChanged += (oldVal, newVal) =>
-        {
-            SetIndex(newVal, immediate: false);
-            UpdateInfoUI(newVal);
-        };
+        currentIndex.OnValueChanged += OnIndexChanged_Network;
 
-        // Set awal
-        if (IsServer) currentIndex.Value = 0;
+        // Terapkan state saat join
+        int idx = SafeIndex(currentIndex.Value);
+        SetIndex(idx, immediate: true);
+        UpdateInfoUI(idx);
+
+        // Late-joiner: lokal play agar ada suara; sinkron presisi terjadi di perubahan index berikutnya.
+        TryPlayAudioLocal(idx, forceRestart: true);
+
+        if (IsServer && currentIndex.Value != idx)
+            currentIndex.Value = idx;
     }
 
-    // === Tombol Next/Prev dipanggil dari UI ===
-    public void OnPrev() { if (!_animating) RequestShiftServerRpc(-1); }
-    public void OnNext() { if (!_animating) RequestShiftServerRpc(+1); }
+    public override void OnNetworkDespawn()
+    {
+        currentIndex.OnValueChanged -= OnIndexChanged_Network;
+    }
+
+    private void OnDestroy()
+    {
+        currentIndex.OnValueChanged -= OnIndexChanged_Network;
+    }
+
+    private void OnIndexChanged_Network(int oldVal, int newVal)
+    {
+        int n = Count;
+        if (n <= 0) return;
+
+        int newIdx = SafeIndex(newVal);
+        SetIndex(newIdx, immediate: false);
+        UpdateInfoUI(newIdx);
+
+        // Server kirim sinkron play biar serempak
+        if (IsServer && playAudioOnChange)
+            BroadcastPlayAudioSynced(newIdx, restartIfSameClip);
+    }
+
+    // ===== UI Handlers =====
+    public void OnPrev() => SendShift(-1);
+    public void OnNext() => SendShift(+1);
+
+    // Opsional tombol audio sinkron:
+    public void OnPlayAudio()
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+        { TryPlayAudioLocal(GetCurrentIndex(), forceRestart: false); return; }
+
+        if (IsServer) BroadcastPlayAudioSynced(GetCurrentIndex(), false);
+        else RequestPlayServerRpc(false);
+    }
+    public void OnPauseAudio()
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+        { if (audioSource) audioSource.Pause(); return; }
+
+        if (IsServer) PauseAudioClientRpc();
+        else RequestPauseServerRpc();
+    }
+    public void OnStopAudio()
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+        { if (audioSource) audioSource.Stop(); return; }
+
+        if (IsServer) StopAudioClientRpc();
+        else RequestStopServerRpc();
+    }
+
+    private void SendShift(int dir)
+    {
+        if (_animating) return;
+
+        if (!gameObject.activeInHierarchy || !enabled)
+        {
+            Debug.LogWarning("[Planet] Diabaikan: GameObject non-aktif.");
+            return;
+        }
+
+        // Offline/editor
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+        { ShiftLocal(dir); return; }
+
+        if (!IsSpawned)
+        {
+            Debug.LogWarning("[Planet] Diabaikan: NetworkObject belum IsSpawned.");
+            return;
+        }
+
+        if (IsServer) { ShiftServer(dir); return; }
+
+        if (IsClient) RequestShiftServerRpc(dir);
+    }
+
+    // ===== RPC untuk shift & kontrol audio =====
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestShiftServerRpc(int dir) => ShiftServer(dir);
 
     [ServerRpc(RequireOwnership = false)]
-    void RequestShiftServerRpc(int dir)
+    private void RequestPlayServerRpc(bool forceRestart) => BroadcastPlayAudioSynced(GetCurrentIndex(), forceRestart);
+
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestPauseServerRpc() => PauseAudioClientRpc();
+
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestStopServerRpc() => StopAudioClientRpc();
+
+    // ===== Server logic =====
+    private void ShiftServer(int dir)
     {
-        if (_instances.Count == 0) return;
-        int n = _instances.Count;
-        int newIndex = ((currentIndex.Value + dir) % n + n) % n;
-        currentIndex.Value = newIndex; // memicu semua client update
+        int n = Count;
+        if (n <= 0) return;
+
+        int target = WrapIndex(currentIndex.Value + dir, n);
+        currentIndex.Value = target; // OnValueChanged → server panggil BroadcastPlayAudioSynced
+        if (playAudioOnChange)
+            BroadcastPlayAudioSynced(target, restartIfSameClip);
     }
 
-    // === Update 3D Planet ===
-    void SetIndex(int newIndex, bool immediate)
+    private void BroadcastPlayAudioSynced(int idx, bool forceRestart)
     {
-        if (_instances.Count == 0) return;
+        double tServerNow = NetworkManager.ServerTime.Time;
+        PlayClipClientRpc(idx, tServerNow, forceRestart, audioVolume, loopAudio);
+    }
+
+    // ===== ClientRpc sinkron audio =====
+    [ClientRpc]
+    private void PlayClipClientRpc(int idx, double sentServerTime, bool forceRestart, float volume, bool loop)
+    {
+        if (!audioSource) { Debug.LogWarning("[Audio][RPC] No AudioSource"); return; }
+        if (CountData <= 0 || idx < 0 || idx >= CountData) { audioSource.Stop(); return; }
+
+        var data = dataList[idx];
+        var clip = data != null ? data.narration : null;
+        if (!clip) { Debug.LogWarning("[Audio][RPC] Clip null"); audioSource.Stop(); return; }
+
+        EnsureAudibleSettingsForTest();
+        audioSource.loop = loop;
+        audioSource.volume = volume;
+
+        double serverNowAtClient = NetworkManager.Singleton.ServerTime.Time;
+        double oneWay = serverNowAtClient - sentServerTime;
+        double startDSP = AudioSettings.dspTime + Math.Max(minStartHeadroom, audioSyncLeadSeconds - oneWay);
+
+        // kalau clip sama & sudah play & tidak forceRestart → biarin
+        if (!forceRestart && audioSource.clip == clip && audioSource.isPlaying) return;
+
+        audioSource.Stop();
+        audioSource.clip = clip;
+
+        if (startDSP <= AudioSettings.dspTime + 0.005)
+        {
+            audioSource.Play();
+            Debug.LogWarning("[Audio][RPC] startDSP ~now → fallback Play()");
+            if (!audioSource.isPlaying)
+            {
+                audioSource.PlayOneShot(clip, audioSource.volume);
+                Debug.LogWarning("[Audio][RPC] Fallback PlayOneShot");
+            }
+            return;
+        }
+
+        audioSource.PlayScheduled(startDSP);
+        Debug.Log($"[Audio][RPC] PlayScheduled in {(startDSP - AudioSettings.dspTime) * 1000f:0}ms, clip={clip.name}, vol={audioSource.volume}");
+    }
+
+    [ClientRpc] private void PauseAudioClientRpc() { if (audioSource) audioSource.Pause(); }
+    [ClientRpc] private void StopAudioClientRpc() { if (audioSource) audioSource.Stop(); }
+
+    // ===== Offline (tanpa Netcode) =====
+    private void ShiftLocal(int dir)
+    {
+        int n = Count;
+        if (n <= 0) return;
+
+        int cur = SafeIndex(currentIndex.Value);
+        int next = WrapIndex(cur + dir, n);
+
+        SetIndex(next, immediate: false);
+        UpdateInfoUI(next);
+        if (playAudioOnChange) TryPlayAudioLocal(next, forceRestart: restartIfSameClip);
+    }
+
+    private void TryPlayAudioLocal(int idx, bool forceRestart)
+    {
+        if (!audioSource) { Debug.LogWarning("[Audio][LOCAL] No AudioSource"); return; }
+        if (CountData <= 0 || idx < 0 || idx >= CountData) { audioSource.Stop(); return; }
+
+        var data = dataList[idx];
+        var clip = data != null ? data.narration : null;
+        if (!clip) { Debug.LogWarning("[Audio][LOCAL] Clip null"); audioSource.Stop(); return; }
+
+        EnsureAudibleSettingsForTest();
+        audioSource.loop = loopAudio;
+
+        if (!forceRestart && audioSource.clip == clip && audioSource.isPlaying) return;
+
+        audioSource.Stop();
+        audioSource.clip = clip;
+        audioSource.Play();
+        Debug.Log($"[Audio][LOCAL] Play() clip={clip.name}, vol={audioSource.volume}");
+
+        if (!audioSource.isPlaying)
+        {
+            audioSource.PlayOneShot(clip, audioSource.volume);
+            Debug.LogWarning("[Audio][LOCAL] Fallback PlayOneShot");
+        }
+    }
+
+    private void EnsureAudibleSettingsForTest()
+    {
+        if (!audioSource) return;
+        // Paksa setelan aman supaya bisa kedengeran
+        audioSource.spatialBlend = 0f;          // 2D dulu
+        audioSource.volume = Mathf.Clamp01(audioVolume <= 0 ? 1f : audioVolume);
+        audioSource.mute = false;
+        audioSource.pitch = 1f;
+        audioSource.dopplerLevel = 0f;
+        audioSource.rolloffMode = AudioRolloffMode.Linear;
+        audioSource.minDistance = 100f;
+        audioSource.maxDistance = 1000f;
+
+        if (!audioSource.gameObject.activeInHierarchy)
+            Debug.LogWarning("[Audio] AudioSource GameObject sedang non-aktif.");
+    }
+
+    // ===== Update 3D =====
+    private void SetIndex(int newIndex, bool immediate)
+    {
+        int n = Count; if (n <= 0) return;
+
         _animating = !immediate;
 
-        int left = ((newIndex - 1) % _instances.Count + _instances.Count) % _instances.Count;
-        int right = ((newIndex + 1) % _instances.Count + _instances.Count) % _instances.Count;
+        int left = WrapIndex(newIndex - 1, n);
+        int right = WrapIndex(newIndex + 1, n);
 
         var goC = EnsureInstance(newIndex);
         var goL = EnsureInstance(left);
         var goR = EnsureInstance(right);
 
-        // Hanya aktifkan 3 planet di sekitar pusat
         for (int i = 0; i < _instances.Count; i++)
-        {
-            if (!_instances[i]) continue;
-            _instances[i].SetActive(i == newIndex || i == left || i == right);
-        }
+            if (_instances[i]) _instances[i].SetActive(i == newIndex || i == left || i == right);
 
         var posC = centerLocalPos + new Vector3(0, 0, depthOffset);
         var posL = centerLocalPos + new Vector3(-sideOffset.x, 0, depthOffset);
@@ -120,33 +344,26 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         AnimateMoveScale(goR, posR, sideScale, () => { _animating = false; });
     }
 
-    // === Update Semua Panel UI ===
-    void UpdateInfoUI(int idx)
+    private void UpdateInfoUI(int idx)
     {
-        if (dataList == null || idx < 0 || idx >= dataList.Length) return;
+        if (CountData <= 0 || idx < 0 || idx >= CountData) return;
+
         var data = dataList[idx];
+        if (infoUIPanels != null)
+            foreach (var p in infoUIPanels) if (p) p.Show(data);
 
-        // Array panel manual
-        if (infoUIPanels != null && infoUIPanels.Length > 0)
-        {
-            foreach (var panel in infoUIPanels)
-                if (panel) panel.Show(data);
-        }
-
-        // Broadcast event global (opsional)
         OnPlanetInfoChanged?.Invoke(data);
     }
 
-    // === Util Animasi & Setup ===
-    void AnimateMoveScale(GameObject go, Vector3 pos, Vector3 scale, System.Action onComplete = null)
+    private void AnimateMoveScale(GameObject go, Vector3 pos, Vector3 scale, Action onComplete = null)
     {
         if (!go) { onComplete?.Invoke(); return; }
         LeanTween.moveLocal(go, pos, moveDuration).setEase(moveEase);
         LeanTween.scale(go, scale, scaleDuration).setEase(scaleEase)
-            .setOnComplete(() => onComplete?.Invoke());
+                 .setOnComplete(() => onComplete?.Invoke());
     }
 
-    void SetLocal(GameObject go, Vector3 pos, Vector3 scale)
+    private void SetLocal(GameObject go, Vector3 pos, Vector3 scale)
     {
         if (!go) return;
         go.transform.localPosition = pos;
@@ -154,11 +371,10 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         go.transform.localScale = scale;
     }
 
-    void Setup(GameObject go)
+    private void Setup(GameObject go)
     {
         if (!go) return;
-        go.transform.SetParent(anchor, false);
-
+        if (go.transform.parent != anchor) go.transform.SetParent(anchor, false);
         if (addAutoSpinIfMissing && !go.GetComponentInChildren<AutoSpin>())
         {
             var s = go.AddComponent<AutoSpin>();
@@ -166,7 +382,7 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         }
     }
 
-    GameObject EnsureInstance(int idx)
+    private GameObject EnsureInstance(int idx)
     {
         if (idx < 0 || idx >= _instances.Count) return null;
         if (_instances[idx]) return _instances[idx];
@@ -176,17 +392,15 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
 
         if (prefab)
         {
-            // Instans langsung dengan parent untuk menghindari SetParent setelahnya
             go = Instantiate(prefab, anchor, false);
-
-            // --- STRIP semua NetworkObject di instans ini ---
-            var netObjs = go.GetComponentsInChildren<Unity.Netcode.NetworkObject>(true);
+            // strip semua NetworkObject di instans visual
+            var netObjs = go.GetComponentsInChildren<NetworkObject>(true);
             for (int i = 0; i < netObjs.Length; i++)
             {
 #if UNITY_EDITOR
-                Object.DestroyImmediate(netObjs[i]); // editor
+                UnityEngine.Object.DestroyImmediate(netObjs[i]);
 #else
-            Destroy(netObjs[i]);                 // playmode
+                Destroy(netObjs[i]);
 #endif
             }
         }
@@ -207,8 +421,21 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         return go;
     }
 
+    // ===== Math helpers & utils =====
+    private static int WrapIndex(int i, int n) { if (n <= 0) return 0; i %= n; if (i < 0) i += n; return i; }
+    private int SafeIndex(int i) => WrapIndex(i, Count);
+    public int GetCurrentIndex() => SafeIndex(currentIndex.Value);
 
-    class AutoSpin : MonoBehaviour
+    public void ForceRefresh()
+    {
+        int idx = GetCurrentIndex();
+        SetIndex(idx, immediate: true);
+        UpdateInfoUI(idx);
+        TryPlayAudioLocal(idx, forceRestart: false);
+    }
+
+    // ===== Komponen kecil putar diri =====
+    private class AutoSpin : MonoBehaviour
     {
         public float degPerSec = 25f;
         void Update() => transform.Rotate(0f, degPerSec * Time.deltaTime, 0f, Space.Self);

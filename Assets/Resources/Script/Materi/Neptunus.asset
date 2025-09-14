@@ -14,4 +14,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlanetData
   infoImage: {fileID: 21300000, guid: 4b4cb290e0cbbe94f937447559b3b729, type: 3}
   planetPicture: {fileID: 0}
-  narration: {fileID: 0}
+  narration: {fileID: 8300000, guid: adc571512b14d154ea5c1264be7b64b3, type: 3}

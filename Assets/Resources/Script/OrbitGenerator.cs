@@ -21,6 +21,12 @@ public class OrbitGenerator : MonoBehaviour
     public float jarakAntarOrbit = 0.5f;
     public int segmentsLingkaran = 64;
 
+    [Header("Orbit Visual")]
+    public Material orbitLineMaterial;                 // drag material URP Unlit / Built-in Unlit
+    public Color orbitColor = new Color(1f, 0f, 0.9f); // warna garis orbit
+    public float lineWidth = 0.01f;                    // ketebalan garis
+    public bool billboardToCamera = true;              // LineRenderer alignment
+
     [Header("Parents")]
     public Transform orbitParent;
     public Transform planetsParent;
@@ -94,7 +100,6 @@ public class OrbitGenerator : MonoBehaviour
 
         for (int i = 0; i < jumlahOrbit; i++)
         {
-            // Hitung radius orbit ke-i
             float radius = radiusAwal + i * jarakAntarOrbit;
 
             // Root orbit
@@ -107,8 +112,21 @@ public class OrbitGenerator : MonoBehaviour
             var line = orbitGO.AddComponent<LineRenderer>();
             line.useWorldSpace = false;
             line.loop = true;
-            line.widthMultiplier = 0.01f;
+            line.widthMultiplier = lineWidth;
             line.positionCount = Mathf.Max(segmentsLingkaran, 32);
+
+            // material/warna/alignment (hindari pink di mobile/URP)
+            line.material = EnsureOrbitMaterial();
+            // set color untuk shader Unlit/Color; untuk URP/Unlit warna di _BaseColor (di-set saat buat material)
+            line.startColor = orbitColor;
+            line.endColor = orbitColor;
+            line.textureMode = LineTextureMode.Stretch;
+            line.alignment = billboardToCamera ? LineAlignment.View : LineAlignment.TransformZ;
+            line.numCornerVertices = 2;
+            line.numCapVertices = 2;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+
             for (int j = 0; j < line.positionCount; j++)
             {
                 float ang = j * 2 * Mathf.PI / line.positionCount;
@@ -128,10 +146,10 @@ public class OrbitGenerator : MonoBehaviour
             slot.SnapPoint = snapPoint.transform;
 
             // === Collider melingkar (SphereCollider rapat) ===
-            const int colliderCount = 48;     // makin besar = makin rapat (mis. 48/64)
+            const int colliderCount = 48;     // makin besar = makin rapat
             const float sphereRadius = 0.02f; // sesuaikan dg ukuran planet & akurasi snap
-
             float angleStep = 360f / colliderCount;
+
             for (int c = 0; c < colliderCount; c++)
             {
                 float angDeg = c * angleStep;
@@ -194,11 +212,14 @@ public class OrbitGenerator : MonoBehaviour
         for (int i = planetsParent.childCount - 1; i >= 0; i--)
             DestroyImmediate(planetsParent.GetChild(i).gameObject);
 
-        int count = Mathf.Min(jumlahOrbit, Mathf.Max(
-            planetNames != null ? planetNames.Length : 0,
-            planetPrefabs != null ? planetPrefabs.Length : 0,
-            jumlahOrbit
-        ));
+        int count = Mathf.Min(
+            jumlahOrbit,
+            Mathf.Max(
+                planetNames != null ? planetNames.Length : 0,
+                planetPrefabs != null ? planetPrefabs.Length : 0,
+                jumlahOrbit
+            )
+        );
 
         var slots = orbitParent.GetComponentsInChildren<OrbitSlot>(true).OrderBy(s => s.Index).ToArray();
 
@@ -221,17 +242,11 @@ public class OrbitGenerator : MonoBehaviour
             }
 
             // tentukan nama planet
-            string baseName;
-            if (gunakanNamaPrefab)
-            {
-                baseName = CleanPrefabName(prefabToUse.name);
-            }
-            else
-            {
-                baseName = (planetNames != null && idx < planetNames.Length && !string.IsNullOrWhiteSpace(planetNames[idx]))
+            string baseName = gunakanNamaPrefab
+                ? CleanPrefabName(prefabToUse.name)
+                : (planetNames != null && idx < planetNames.Length && !string.IsNullOrWhiteSpace(planetNames[idx]))
                     ? planetNames[idx]
                     : CleanPrefabName(prefabToUse.name);
-            }
 
             if (!nameCounter.ContainsKey(baseName)) nameCounter[baseName] = 0;
             nameCounter[baseName]++;
@@ -265,7 +280,7 @@ public class OrbitGenerator : MonoBehaviour
             if (planet)
             {
                 planet.PlanetName = finalName;
-                planet.IdUrutanBenar = idx + 1; // <<< urutan benar mengikuti urutan prefab / generate
+                planet.IdUrutanBenar = idx + 1; // urutan benar mengikuti urutan prefab / generate
                 if (!planet.manager) planet.manager = GetOrFindManager();
 #if UNITY_EDITOR
                 planet.NetPos.Value = go.transform.position;
@@ -336,11 +351,27 @@ public class OrbitGenerator : MonoBehaviour
         return gameManager;
     }
 
-    // ====== HELPERS ======
     string CleanPrefabName(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return "Planet";
-        string s = raw.Replace("(Clone)", "").Trim();
-        return s;
+        return raw.Replace("(Clone)", "").Trim();
+    }
+
+    // buat material fallback kalau belum diassign (hindari pink)
+    Material EnsureOrbitMaterial()
+    {
+        if (orbitLineMaterial) return orbitLineMaterial;
+
+        // coba URP Unlit dulu, kalau tidak ada jatuh ke Built-in Unlit/Color
+        Shader sh =
+            Shader.Find("Universal Render Pipeline/Unlit") ??
+            Shader.Find("Unlit/Color");
+
+        var mat = new Material(sh);
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", orbitColor);
+        orbitLineMaterial = mat;
+        return orbitLineMaterial;
     }
 }
+
+

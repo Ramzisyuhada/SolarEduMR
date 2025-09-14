@@ -3,35 +3,53 @@ using UnityEngine.UI;
 
 public class PlanetInfoUI : MonoBehaviour
 {
-    [Header("UI")]
-    public RawImage infoRaw;        // gambar full (nama+deskripsi)
-    public RawImage planetRaw;      // gambar planet opsional
+    [Header("UI Planet")]
+    public Image planetDescImage;   // Sprite dari PlanetData.infoImage
 
-    [Header("Audio (opsional)")]
-    public AudioSource audioSource;
+    [Header("Audio")]
+    public AudioSource descSource;  // narasi planet
 
-    public void Show(PlanetData d)
+    // Tampilkan info planet + audio
+    public void Show(PlanetData planet)
     {
-        if (!d) { Hide(); return; }
+        if (planetDescImage)
+            planetDescImage.sprite = planet ? planet.infoImage : null;
 
-        if (infoRaw) infoRaw.texture = d.infoImage ? d.infoImage.texture : null;
-        if (planetRaw) planetRaw.texture = d.planetPicture ? d.planetPicture.texture : null;
+        if (!gameObject.activeSelf)
+            gameObject.SetActive(true);
 
-        if (!gameObject.activeSelf) gameObject.SetActive(true);
+        // Mainkan audio narasi jika ada
+        if (planet && planet.narration)
+            PlayClip(descSource, planet.narration);
     }
 
-    public void Hide()
+    // Sembunyikan info planet
+    public void HidePlanet()
     {
-        if (infoRaw) infoRaw.texture = null;
-        if (planetRaw) planetRaw.texture = null;
+        if (planetDescImage)
+            planetDescImage.sprite = null;
+        if (descSource)
+            descSource.Stop();
+    }
+
+    public void HideAll()
+    {
+        HidePlanet();
         gameObject.SetActive(false);
     }
 
-    public void PlayNarration(PlanetData d)
+    // === Audio helper ===
+    public void PlayDescription(PlanetData d)
     {
-        if (!audioSource || !d || !d.narration) return;
-        audioSource.Stop();
-        audioSource.clip = d.narration;
-        audioSource.Play();
+        if (d && d.narration)
+            PlayClip(descSource, d.narration);
+    }
+
+    void PlayClip(AudioSource src, AudioClip clip)
+    {
+        if (!src || !clip) return;
+        src.Stop();
+        src.clip = clip;
+        src.Play();
     }
 }

@@ -1,0 +1,97 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2134609066975333418
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8296277820349826505}
+  - component: {fileID: 3973654992501837115}
+  - component: {fileID: 8187918023563517695}
+  m_Layer: 0
+  m_Name: PlanetCarousel3DUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8296277820349826505
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2134609066975333418}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.09564, y: 0.3515, z: -0.18898}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3973654992501837115
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2134609066975333418}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 538017316
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &8187918023563517695
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2134609066975333418}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fc15bc9450fcc194998ae43c60ab1e6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlanetCarousel3DUI
+  ShowTopMostFoldoutHeaderGroup: 1
+  dataList: []
+  planetPrefabs:
+  - {fileID: 3844254495449838386, guid: 810fb18d54ea01147957e8d4dfc7b81d, type: 3}
+  - {fileID: 5405522195345489532, guid: a09fcd4c5e42d3248813ce281a1847c2, type: 3}
+  - {fileID: 1342105168090028581, guid: 0c9e116b9bd61de4d86e3a2b5ff66002, type: 3}
+  - {fileID: 9021913166885111034, guid: d1d00fddc24050a4f96dfff70b43e4d6, type: 3}
+  - {fileID: 2289541252571873050, guid: 8a389226a401dcf4ba2d13d26e1ea522, type: 3}
+  - {fileID: 4276269513134621140, guid: 1be7f1c3c88d177458770da86ca04c44, type: 3}
+  - {fileID: 5248528460947878820, guid: f9baa39c0354ab547b7ba57294017286, type: 3}
+  - {fileID: 4422204577926555967, guid: 30aacb0b63f802441ba1066d9ad1ffad, type: 3}
+  anchor: {fileID: 0}
+  centerLocalPos: {x: 0, y: 0, z: 0}
+  sideOffset: {x: 0.6, y: 0, z: 0}
+  depthOffset: 0
+  centerScale: {x: 0.15, y: 0.15, z: 0.15}
+  sideScale: {x: 0, y: 0, z: 0}
+  moveDuration: 0.35
+  scaleDuration: 0.3
+  moveEase: 7
+  scaleEase: 27
+  addAutoSpinIfMissing: 1
+  selfSpinDeg: 25
+  infoUIPanels: []
+  autoFindInfoPanels: 1

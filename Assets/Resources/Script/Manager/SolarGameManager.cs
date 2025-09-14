@@ -171,10 +171,32 @@ public class SolarGameManager : NetworkBehaviour
     // ---------- UI: Tombol Cek ----------
     public void OnClickCheckOrder()
     {
-        Debug.Log($"[CheckButton] manager={name}, planets={planets?.Length ?? 0}, slots={slots?.Length ?? 0}");
-        if (IsServer) DoCheckAndColorizeServer();
-        else DoCheckAndColorizeServerRpc();
+        if (NetworkObject && NetworkObject.IsSpawned)
+        {
+            if (IsServer) DoCheckAndColorizeServer();
+            else DoCheckAndColorizeServerRpc();
+        }
+        else
+        {
+            // FALLBACK lokal: warna di klien saja (tidak sync)
+            Debug.LogWarning("[GM] Not spawned. Running local check (no networking).");
+            RebindAllLocal();
+            DoCheckAndColorizeLocal();
+        }
     }
+
+    void DoCheckAndColorizeLocal()
+    {
+        if (slots == null || planets == null) return;
+
+        foreach (var slot in slots)
+        {
+            var p = planets.FirstOrDefault(pl => pl && pl.CurrentOrbitIndex.Value == slot.Index);
+            bool isCorrect = (p != null) && (p.IdUrutanBenar == slot.Index);
+            slot.ApplyResultColor(isCorrect);  // langsung lokal, tanpa RPC
+        }
+    }
+
 
     [ServerRpc(RequireOwnership = false)]
     void DoCheckAndColorizeServerRpc() => DoCheckAndColorizeServer();

@@ -5045,7 +5045,7 @@ MonoBehaviour:
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
   ActiveSceneSynchronization: 0
-  SceneMigrationSynchronization: 0
+  SceneMigrationSynchronization: 1
   SpawnWithObservers: 1
   DontDestroyWithOwner: 0
   AutoObjectParentSync: 1
@@ -5079,7 +5079,6 @@ MonoBehaviour:
   orbitSpeedDeg: 20
   selfSpinDeg: 50
   orbitPlaneTiltDeg: 0
-  currentSlot: {fileID: 0}
 --- !u!54 &-4220857213905583028
 Rigidbody:
   m_ObjectHideFlags: 0
