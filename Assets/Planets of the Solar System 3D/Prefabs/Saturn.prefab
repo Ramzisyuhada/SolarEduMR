@@ -159,7 +159,7 @@ LODGroup:
     - renderer: {fileID: 23506883498154470}
     - renderer: {fileID: 23162402637312718}
     - renderer: {fileID: 199907745297058340}
-  m_Enabled: 1
+  m_Enabled: 0
 --- !u!135 &7568472841969023686
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -192,9 +192,9 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  m_EditorClassIdentifier: 
   GlobalObjectIdHash: 1619083245
-  InScenePlacedSourceGlobalObjectIdHash: 1619083245
+  InScenePlacedSourceGlobalObjectIdHash: 3345695327
   DeferredDespawnTick: 0
   Ownership: 1
   AlwaysReplicateAsRoot: 0
@@ -202,7 +202,7 @@ MonoBehaviour:
   ActiveSceneSynchronization: 0
   SceneMigrationSynchronization: 1
   SpawnWithObservers: 1
-  DontDestroyWithOwner: 0
+  DontDestroyWithOwner: 1
   AutoObjectParentSync: 1
   SyncOwnerTransformWhenParented: 1
   AllowOwnerToParent: 0
@@ -213,7 +213,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1377197793697218}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d8c4e89348fbb5d459a598b3ee23d9b8, type: 3}
   m_Name: 
@@ -459,13 +459,13 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: eb1cca572c123384bbcd5da9749cf9b1, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: XRMP::XRMultiplayer.NetworkPhysicsInteractable
+  m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
   m_AllowOverrideOwnership: 0
   m_InteractionCheckTime: 2
   m_IgnoreSocketSelectedCallback: 1
   m_ResetObjectOnDisconnect: 1
-  m_RelinquishOwnershipAfterTime: 1
+  m_RelinquishOwnershipAfterTime: 0
   m_RelinquishOwnershipTime: 5
   m_UseInteractingChangedEvent: 0
   OnInteractingChanged:
@@ -487,7 +487,7 @@ MonoBehaviour:
   SelectNetworkedEventAll:
     m_PersistentCalls:
       m_Calls: []
-  m_SyncActivate: 1
+  m_SyncActivate: 0
   m_UseActivateEvents: 0
   ActivateNetworkedEventServer:
     m_PersistentCalls:
@@ -496,7 +496,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_FoldoutValues: 010101
-  m_AllowCollisionOwnershipExchange: 1
+  m_AllowCollisionOwnershipExchange: 0
   m_MinExchangeVelocityMagitude: 0.025
   spawnLocked: 1
 --- !u!1 &1445422062220386
