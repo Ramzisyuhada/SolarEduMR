@@ -8,6 +8,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -9185245466208455738, guid: 300f80108a63f48618cb4a1c8b8c1e86,
+        type: 3}
+      propertyPath: NetworkTransformExpanded
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: -6757225800701523601, guid: 300f80108a63f48618cb4a1c8b8c1e86,
         type: 3}
       propertyPath: GlobalObjectIdHash
@@ -21,6 +26,10 @@ PrefabInstance:
     - target: {fileID: 1733945558841920, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
       propertyPath: m_Name
       value: Earth Variant
+      objectReference: {fileID: 0}
+    - target: {fileID: 1733945558841920, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4643521465287934, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
       propertyPath: m_LocalScale.x
@@ -79,7 +88,6 @@ PrefabInstance:
     - {fileID: 2479679395517597751, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
     - {fileID: -53440501985557047, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
     - {fileID: 8982981155437824453, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
-    - {fileID: -6757225800701523601, guid: 300f80108a63f48618cb4a1c8b8c1e86, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
@@ -101,7 +109,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3844254495449838386}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
