@@ -34,6 +34,7 @@ namespace UnityEngine.XR.Templates.MRTTabletopAssets
             m_JoinButton.interactable = m_Lobby.AvailableSlots <= 0;
             m_FullImage.SetActive(false);
             m_JoinImage.SetActive(false);
+
         }
 
         public void CreateNonJoinableLobbyUI(Lobby lobby, LobbyUI lobbyListUI, string statusText)

@@ -76,7 +76,14 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         else if (CountPrefabs != CountData)
             Debug.LogWarning($"[Planet] Jumlah data ({CountData}) != prefabs ({CountPrefabs}). 3D pakai {Count} item; UI/Audio di-guard.");
     }
+    private void OnEnable()
+    {
+    }
 
+    private void OnDisable()
+    {
+
+    }
     public override void OnNetworkSpawn()
     {
         if (autoFindInfoPanels && (infoUIPanels == null || infoUIPanels.Length == 0))
@@ -394,13 +401,13 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         {
             go = Instantiate(prefab, anchor, false);
             // strip semua NetworkObject di instans visual
-            var netObjs = go.GetComponentsInChildren<NetworkObject>(true);
+            var netObjs = go.GetComponentsInChildren<NetworkObject>();
             for (int i = 0; i < netObjs.Length; i++)
             {
 #if UNITY_EDITOR
-                UnityEngine.Object.DestroyImmediate(netObjs[i]);
+               UnityEngine.Object.DestroyImmediate(netObjs[i]);
 #else
-                Destroy(netObjs[i]);
+               Destroy(netObjs[i]);
 #endif
             }
         }
@@ -416,7 +423,7 @@ public class PlanetCarousel3DUI_Net : NetworkBehaviour
         go.transform.localRotation = Quaternion.identity;
         go.transform.localScale = sideScale;
         go.SetActive(false);
-
+        go.AddComponent<NetworkObject>();
         _instances[idx] = go;
         return go;
     }
