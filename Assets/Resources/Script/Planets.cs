@@ -66,7 +66,7 @@ public class Planet : NetworkBehaviour
     void Update()
     {
         // klien non-server: lerp ke nilai network
-        if (!IsServer)
+        if (!IsServer && !IsOwner)
         {
             transform.position = Vector3.Lerp(transform.position, NetPos.Value, 0.35f);
             transform.rotation = Quaternion.Slerp(transform.rotation, NetRot.Value, 0.35f);
@@ -76,7 +76,7 @@ public class Planet : NetworkBehaviour
     void LateUpdate()
     {
         if (!IsServer) return;
-        if (!orbitWhenSnapped || _currentSlot == null || _isGrabbed) return;
+        if (!orbitWhenSnapped || _currentSlot == null || _svGrabbed) return;
 
         _orbitAngleDeg += orbitSpeedDeg * Time.deltaTime;
 
@@ -97,20 +97,27 @@ public class Planet : NetworkBehaviour
         NetPos.Value = worldPos;
         NetRot.Value = worldRot;
     }
+    bool _svGrabbed; // hanya dipakai server
 
+    [ServerRpc(RequireOwnership = false)]
+    void SetGrabStateServerRpc(bool grabbed)
+    {
+        _svGrabbed = grabbed;
+        if (_rb) _rb.isKinematic = grabbed;
+        if (grabbed) StopOrbit();
+    }
     // ===== Public hooks untuk sistem input =====
     public void OnGrabbedByClient()
     {
-        _isGrabbed = true;
+        _isGrabbed = true;                    // lokal (klien ini)
+        SetGrabStateServerRpc(true);          // beri tahu server
         if (!IsOwner) RequestOwnershipServerRpc(NetworkManager.LocalClientId);
-        Debug.Log($"[GRAB] {PlanetName} by client={NetworkManager?.LocalClientId}");
     }
 
     public void OnReleasedByClient()
     {
-        _isGrabbed = false;
-        Debug.Log($"[RELEASE] {PlanetName} candidates={string.Join(",", _candidateIndices)} pos={transform.position}");
-        // minta server memilih slot terbaik (dari kandidat/terdekat)
+        _isGrabbed = false;                   // lokal
+        SetGrabStateServerRpc(false);         // beri tahu server
         TrySnapToCandidateOrNearestServerRpc(transform.position);
     }
 
