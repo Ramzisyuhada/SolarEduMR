@@ -170,7 +170,7 @@ public class NetworkUFONPC : NetworkBehaviour
     void ServerHoverIdle()
     {
         // hanya bob kecil: velocity ke nol
-        rb.velocity = Vector3.Lerp(rb.velocity, Vector3.zero, accelLerp);
+        rb.linearVelocity = Vector3.Lerp(rb.linearVelocity, Vector3.zero, accelLerp);
         // rotasi pelan stabil
         var targetRot = Quaternion.Euler(0f, transform.eulerAngles.y + (turnSpeed * 0.15f * Time.fixedDeltaTime), 0f);
         rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, targetRot, turnSpeed * Time.fixedDeltaTime));
@@ -242,7 +242,7 @@ public class NetworkUFONPC : NetworkBehaviour
 
         // world velocity: maju ke depan + naik/turun
         Vector3 desired = transform.TransformDirection(localVel);
-        rb.velocity = Vector3.Lerp(rb.velocity, desired, accelLerp);
+        rb.linearVelocity = Vector3.Lerp(rb.linearVelocity, desired, accelLerp);
     }
 
     void PulseBeam()
@@ -258,7 +258,7 @@ public class NetworkUFONPC : NetworkBehaviour
         if (!visualRoot) return;
 
         // Tilt berdasarkan velocity (klien punyai rb interpolated dari NetworkTransform)
-        Vector3 v = rb ? rb.velocity : Vector3.zero;
+        Vector3 v = rb ? rb.linearVelocity : Vector3.zero;
         if (enableTilt)
         {
             float forwardSpeed = Vector3.Dot(v, transform.forward);
