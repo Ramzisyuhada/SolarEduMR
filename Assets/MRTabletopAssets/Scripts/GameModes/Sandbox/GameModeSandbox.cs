@@ -26,7 +26,7 @@ namespace UnityEngine.XR.Templates.MRTTabletopAssets
             m_ObjectDispenser.Hide();
             foreach (var obj in m_ObjectsToToggle)
             {
-                obj.SetActive(false);
+                obj.SetActive(true);
             }
         }
 

@@ -26,7 +26,7 @@ namespace UnityEngine.XR.Templates.MRTTabletopAssets
         {
             base.OnNetworkSpawn();
 
-            if (IsServer)
+         /*   if (IsServer)
             {
                 networkedSeats.Clear();
                 for (int i = 0; i < m_SeatButtons.Length; i++)
@@ -42,7 +42,7 @@ namespace UnityEngine.XR.Templates.MRTTabletopAssets
             if (IsServer)
             {
                 XRINetworkGameManager.Instance.playerStateChanged += OnPlayerStateChanged;
-            }
+            }*/
         }
 
         public override void OnNetworkDespawn()

@@ -212,7 +212,7 @@ namespace UnityEngine.XR.Templates.MRTTabletopAssets
 
             foreach (var slot in m_PersistentPanel.spawnerSlots)
             {
-                slot.gameObject.SetActive(false);
+                slot.gameObject.SetActive(true);
             }
         }
 
