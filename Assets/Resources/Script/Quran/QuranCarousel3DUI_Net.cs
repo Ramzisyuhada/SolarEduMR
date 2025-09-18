@@ -1,8 +1,14 @@
-using UnityEngine;
+﻿using UnityEngine;
 using Unity.Netcode;
 
-/// Carousel Qur'an TANPA 3D.
-/// Hanya sinkronkan index, update Quran3DDisplay, dan kontrol audio via RPC.
+//
+// Carousel Qur'an TANPA 3D.
+// Sinkronkan index, dan playback audio sinkron pakai waktu server.
+// - currentIndex → ayat aktif
+// - playMode: 0=stop, 1=ayat, 2=arti
+// - playStartTime: timestamp waktu server saat mulai play
+// - playIndex: index ayat yang sedang dimainkan
+//
 public class QuranCarousel3DUI_Net : NetworkBehaviour
 {
     [Header("Data Qur'an (urut sesuai index)")]
@@ -11,8 +17,26 @@ public class QuranCarousel3DUI_Net : NetworkBehaviour
     [Header("Panel Qur'an 3D (UI saja)")]
     public Quran3DDisplay quranDisplay;   // berisi ayatJudul, ayatImage, artiImage, audio sources
 
-    // sinkron index aktif (0..N-1)
+    // ====== State jaringan ======
     private NetworkVariable<int> currentIndex = new(
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    private NetworkVariable<byte> playMode = new( // 0=none,1=ayat,2=arti
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    private NetworkVariable<double> playStartTime = new(
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    private NetworkVariable<int> playIndex = new(
         0,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
@@ -22,23 +46,53 @@ public class QuranCarousel3DUI_Net : NetworkBehaviour
 
     void Start()
     {
-        // Jika belum join network / object belum spawned, tetap bisa lokal
-        if (!IsSpawned) EnsureLocalInitialized();
+        if (!IsSpawned) EnsureLocalInitialized(); // mode offline masih jalan
     }
 
     public override void OnNetworkSpawn()
     {
-        // setiap index berubah ? update panel di semua klien
-        currentIndex.OnValueChanged += (oldVal, newVal) =>
+        // Refs
+        if (!quranDisplay) quranDisplay = FindObjectOfType<Quran3DDisplay>(true);
+
+        // Reaksi saat index ganti → update panel
+        currentIndex.OnValueChanged += (_, newVal) =>
         {
             UpdateQuranDisplay(newVal);
+            // opsional: stop audio saat ganti ayat
+            // kalau mau auto-continue, hapus baris di bawah
+            if (IsClient) ApplyPlaybackFromState(); // biar kalau playMode!=0 tetap ke ayat yg benar
         };
 
-        // set awal
+        // Reaksi saat state playback berubah
+        playMode.OnValueChanged += (_, __) =>
+        {
+            if (IsClient) ApplyPlaybackFromState();
+        };
+        playIndex.OnValueChanged += (_, __) =>
+        {
+            if (IsClient) ApplyPlaybackFromState();
+        };
+        playStartTime.OnValueChanged += (_, __) =>
+        {
+            if (IsClient) ApplyPlaybackFromState();
+        };
+
+        // Set awal
         if (IsServer)
-            currentIndex.Value = Mathf.Clamp(currentIndex.Value, 0, Mathf.Max(0, (dataList?.Length ?? 1) - 1));
+        {
+            int max = Mathf.Max(0, (dataList?.Length ?? 1) - 1);
+            currentIndex.Value = Mathf.Clamp(currentIndex.Value, 0, max);
+            // jaga konsistensi playback untuk late joiner
+            if (playMode.Value != 0 && (playIndex.Value < 0 || playIndex.Value >= (dataList?.Length ?? 0)))
+            {
+                playMode.Value = 0;
+            }
+        }
         else
+        {
             UpdateQuranDisplay(currentIndex.Value);
+            ApplyPlaybackFromState(); // kalau server lagi play, klien yang baru join langsung ikut
+        }
     }
 
     void EnsureLocalInitialized()
@@ -67,7 +121,10 @@ public class QuranCarousel3DUI_Net : NetworkBehaviour
     {
         int n = Mathf.Max(dataList != null ? dataList.Length : 0, 1);
         int newIndex = ((currentIndex.Value + dir) % n + n) % n;
-        currentIndex.Value = newIndex; // memicu OnValueChanged di semua klien
+        currentIndex.Value = newIndex;
+
+        // opsional: stop audio saat ganti ayat
+        playMode.Value = 0;
     }
 
     // fallback lokal (offline)
@@ -77,6 +134,8 @@ public class QuranCarousel3DUI_Net : NetworkBehaviour
         int newIndex = ((currentIndex.Value + dir) % n + n) % n;
         currentIndex.Value = newIndex;
         UpdateQuranDisplay(newIndex);
+        // stop lokal
+        if (quranDisplay) quranDisplay.StopAll();
     }
 
     // ====== Update Panel UI ======
@@ -91,20 +150,20 @@ public class QuranCarousel3DUI_Net : NetworkBehaviour
         }
 
         quranDisplay.AutoAssignCamera();
-        quranDisplay.Show(dataList[idx]);   // tampilkan sprites & judul, tanpa 3D
+        quranDisplay.Show(dataList[idx]);   // tampilkan sprites & judul
     }
 
-    // ====== Audio kontrol (tombol) ======
+    // ====== Tombol Audio ======
     public void OnPlayAyat()
     {
-        if (IsSpawned) RequestPlayServerRpc(0);
-        else { EnsureLocalInitialized(); quranDisplay?.PlayAyat(); }
+        if (IsSpawned) RequestPlayServerRpc(1);
+        else { EnsureLocalInitialized(); quranDisplay?.PlayAyatAt(0); }
     }
 
     public void OnPlayArti()
     {
-        if (IsSpawned) RequestPlayServerRpc(1);
-        else { EnsureLocalInitialized(); quranDisplay?.PlayArti(); }
+        if (IsSpawned) RequestPlayServerRpc(2);
+        else { EnsureLocalInitialized(); quranDisplay?.PlayArtiAt(0); }
     }
 
     public void OnStopAudio()
@@ -114,30 +173,48 @@ public class QuranCarousel3DUI_Net : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    void RequestPlayServerRpc(int which /*0=ayat,1=arti*/)
+    void RequestPlayServerRpc(int mode /*1=ayat,2=arti*/)
     {
-        PlayClipClientRpc(which, currentIndex.Value);
+        if (dataList == null || dataList.Length == 0) return;
+
+        // set state agar LATE JOINER ikut
+        playIndex.Value = currentIndex.Value;
+        playStartTime.Value = NetworkManager.ServerTime.Time; // timestamp server
+        playMode.Value = (byte)Mathf.Clamp(mode, 0, 2);
+        // Tidak perlu ClientRpc manual karena kita pakai OnValueChanged di atas
     }
 
     [ServerRpc(RequireOwnership = false)]
     void RequestStopAllServerRpc()
     {
-        StopAllClientRpc();
+        playMode.Value = 0; // semua klien stop lewat ApplyPlaybackFromState
     }
 
-    [ClientRpc]
-    void PlayClipClientRpc(int which, int idx)
+    // ====== Terapkan state playback di klien (termasuk late joiner) ======
+    void ApplyPlaybackFromState()
     {
-        if (!quranDisplay) return;
-        if (dataList == null || idx < 0 || idx >= dataList.Length) return;
+        if (!quranDisplay || dataList == null || dataList.Length == 0) return;
 
-        if (which == 0) quranDisplay.PlayAyat();
-        else if (which == 1) quranDisplay.PlayArti();
-    }
+        // Jika stop
+        if (playMode.Value == 0)
+        {
+            quranDisplay.StopAll();
+            return;
+        }
 
-    [ClientRpc]
-    void StopAllClientRpc()
-    {
-        quranDisplay?.StopAll();
+        int idx = Mathf.Clamp(playIndex.Value, 0, dataList.Length - 1);
+        // Pastikan panel menampilkan ayat yang sedang diputar
+        if (currentIndex.Value != idx)
+        {
+            UpdateQuranDisplay(idx);
+        }
+
+        // Hitung offset dari waktu server
+        double now = NetworkManager.ServerTime.Time;
+        double elapsed = now - playStartTime.Value;
+        float offset = Mathf.Max(0f, (float)elapsed);
+
+        if (playMode.Value == 1) quranDisplay.PlayAyatAt(offset);
+        else if (playMode.Value == 2) quranDisplay.PlayArtiAt(offset);
     }
 }

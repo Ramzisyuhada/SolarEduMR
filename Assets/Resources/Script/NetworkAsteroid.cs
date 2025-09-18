@@ -1,4 +1,5 @@
 ﻿// NetworkAsteroid.cs
+using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -37,6 +38,14 @@ public class NetworkAsteroid : NetworkBehaviour
     [SerializeField] float explosionForce = 8f;
     [SerializeField] bool chainReactAsteroids = true;
 
+    [Header("Explosion Timing & Control")]
+    [SerializeField] bool destroyAfterExplosion = true;   // TRUE: hancur setelah anim/VFX
+    [SerializeField] float fallbackDespawnDelay = 1.2f;   // kalau durasi VFX tak bisa dihitung
+    [SerializeField] bool disableCollidersOnExplode = true;
+    [SerializeField] bool hideRenderersOnExplode = false; // jika ingin visual hilang saat mulai anim
+    [SerializeField] string animatorTrigger = "Explode";  // kosongkan kalau tidak pakai Animator
+    [SerializeField] float minExplodeInterval = 0.25f;    // anti-spam sentuhan beruntun (detik)
+
     [Header("(Legacy Projectile - opsional)")]
     [SerializeField] string projectileTag = "Projectile";
     [SerializeField] float projectileHitDamage = 25f;
@@ -47,6 +56,9 @@ public class NetworkAsteroid : NetworkBehaviour
     Transform _center;
     bool _initialized;
 
+    bool _exploding;           // guard supaya tidak dobel ledak
+    float _lastExplodeTime = -999f;
+
     // ---------------- Init ----------------
     public void ServerInit(Transform center, Vector3 startPos, Vector3 velocity, Vector3 angVel, float uniformScale, float hpOverride = -1f)
     {
@@ -54,7 +66,7 @@ public class NetworkAsteroid : NetworkBehaviour
 
         _center = center;
         transform.position = startPos;
-        transform.localScale = Vector3.one * uniformScale;
+        // transform.localScale = Vector3.one * uniformScale;
 
         _rb.linearVelocity = velocity;
         _rb.angularVelocity = angVel * Mathf.Deg2Rad;
@@ -99,7 +111,8 @@ public class NetworkAsteroid : NetworkBehaviour
         // CLIENT: deteksi sentuh lokal oleh tangan → minta server meledakkan
         if (!IsServer && ShouldExplodeOnTouch(other, 0f))
         {
-            RequestExplodeServerRpc(other.ClosestPoint(transform.position));
+            Vector3 at = other.ClosestPoint(transform.position);
+            RequestExplodeServerRpc(at);
             return;
         }
 
@@ -150,8 +163,11 @@ public class NetworkAsteroid : NetworkBehaviour
         bool layerOk = ((1 << other.gameObject.layer) & explodeOnLayers) != 0;
         // Tag filter
         bool tagOk = false;
-        if (explodeOnTags != null) foreach (var t in explodeOnTags)
+        if (explodeOnTags != null)
+        {
+            foreach (var t in explodeOnTags)
                 if (!string.IsNullOrEmpty(t) && other.CompareTag(t)) { tagOk = true; break; }
+        }
 
         if (!(layerOk || tagOk)) return false;
 
@@ -182,11 +198,26 @@ public class NetworkAsteroid : NetworkBehaviour
 
     void Explode(Vector3 at)
     {
-        // VFX
+        // Anti-spam
+        if (Time.time - _lastExplodeTime < minExplodeInterval) return;
+        _lastExplodeTime = Time.time;
+
+        if (_exploding) return;
+        _exploding = true;
+
+        // 1) VFX di semua klien
         if (explosionVfxPrefab) SpawnFxClientRpc(explosionVfxPrefab.name, at);
         else if (breakVfxPrefab) SpawnFxClientRpc(breakVfxPrefab.name, at);
 
-        // Physics area
+        // 2) Animator trigger di semua klien
+        TriggerAnimatorClientRpc();
+
+        // 3) Nonaktifkan fisika & collider agar tak meledak lagi saat animasi
+        if (_rb) { _rb.linearVelocity = Vector3.zero; _rb.angularVelocity = Vector3.zero; }
+        if (disableCollidersOnExplode) SetAllCollidersEnabled(false);
+        if (hideRenderersOnExplode) SetAllRenderersEnabled(false);
+
+        // 4) Dorong rigidbody sekitar (opsional)
         if (explosionAffectsRigidbodies && explosionRadius > 0f)
         {
             var cols = Physics.OverlapSphere(at, explosionRadius);
@@ -207,13 +238,23 @@ public class NetworkAsteroid : NetworkBehaviour
             }
         }
 
+        // 5) Jadwalkan despawn setelah anim/VFX selesai
+        if (destroyAfterExplosion) StartCoroutine(DespawnAfterExplosionDelay());
+        else _exploding = false; // kalau tidak dihancurkan, izinkan meledak lagi nanti
+    }
+
+    IEnumerator DespawnAfterExplosionDelay()
+    {
+        // Gunakan fallback delay; kalau ingin akurat, set sesuai durasi anim/VFX di Inspector
+        yield return new WaitForSeconds(Mathf.Max(0.05f, fallbackDespawnDelay));
         ServerDespawn();
     }
 
     void ServerDespawn()
     {
         if (!IsServer) return;
-        if (TryGetComponent(out NetworkObject no)) no.Despawn(); else Destroy(gameObject);
+        if (TryGetComponent(out NetworkObject no)) no.Despawn();
+        else Destroy(gameObject);
     }
 
     // ---------------- RPC: Client → Server minta ledak ----------------
@@ -228,16 +269,73 @@ public class NetworkAsteroid : NetworkBehaviour
         // else: abaikan
     }
 
-    // ---------------- FX ke klien ----------------
+    // Dipanggil dari komponen lain di CLIENT saat pinch (XRI, dsb)
+    public void ClientRequestExplode(Vector3 at)
+    {
+        if (IsServer) Explode(at);
+        else RequestExplodeServerRpc(at);
+    }
+
+    // ---------------- Animator & FX ke klien ----------------
+    [ClientRpc]
+    void TriggerAnimatorClientRpc()
+    {
+        if (string.IsNullOrEmpty(animatorTrigger)) return;
+        var anims = GetComponentsInChildren<Animator>(true);
+        foreach (var a in anims)
+        {
+            if (a && a.isActiveAndEnabled) a.SetTrigger(animatorTrigger);
+        }
+    }
+
     [ClientRpc]
     void SpawnFxClientRpc(string fxName, Vector3 at)
     {
         var prefab = AsteroidFxRegistry.Get(fxName);
-        if (prefab)
+        if (!prefab) return;
+
+        var go = Object.Instantiate(prefab, at, Quaternion.identity);
+        float life = ComputeFxLifetime(go);
+        Object.Destroy(go, life);
+    }
+
+    float ComputeFxLifetime(GameObject fxInstance)
+    {
+        float maxT = 0.75f; // minimal aman
+        var pss = fxInstance.GetComponentsInChildren<ParticleSystem>(true);
+        foreach (var ps in pss)
         {
-            var go = Object.Instantiate(prefab, at, Quaternion.identity);
-            Object.Destroy(go, 2f);
+            var m = ps.main;
+            float dur = m.duration;
+
+            // perkiraan lifetime
+            float life = 0f;
+#if UNITY_6000_0_OR_NEWER
+            // API curve mode mungkin berbeda; fallback ke constant jika perlu
+#endif
+            switch (m.startLifetime.mode)
+            {
+                case ParticleSystemCurveMode.TwoConstants:
+                    life = m.startLifetime.constantMax; break;
+                case ParticleSystemCurveMode.TwoCurves:
+                    life = Mathf.Max(m.startLifetime.curveMax.length, m.startLifetime.curveMin.length); break;
+                default:
+                    life = m.startLifetime.constant; break;
+            }
+
+            maxT = Mathf.Max(maxT, dur + life + 0.25f);
         }
+        return maxT;
+    }
+
+    // ---------------- Helpers ----------------
+    void SetAllCollidersEnabled(bool en)
+    {
+        foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = en;
+    }
+    void SetAllRenderersEnabled(bool en)
+    {
+        foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = en;
     }
 }
 
@@ -249,11 +347,16 @@ public class AsteroidFxRegistry : MonoBehaviour
 {
     public GameObject[] prefabs; // nama prefab harus unik
     static AsteroidFxRegistry _inst;
+
     void Awake() { _inst = this; }
+
     public static GameObject Get(string name)
     {
-        if (_inst == null || _inst.prefabs == null) return null;
+        if (_inst == null || _inst.prefabs == null || string.IsNullOrEmpty(name)) return null;
         foreach (var p in _inst.prefabs) if (p && p.name == name) return p;
-        return null;
+
+        // Fallback: coba Resources.Load dengan nama yang sama
+        var res = Resources.Load<GameObject>(name);
+        return res;
     }
 }

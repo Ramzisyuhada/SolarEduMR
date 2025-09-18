@@ -73,6 +73,7 @@ GameObject:
   - component: {fileID: 447896}
   - component: {fileID: 3347274}
   - component: {fileID: 2351938}
+  - component: {fileID: 8098962245684835828}
   m_Layer: 0
   m_Name: test_asteroid_LOD0
   m_TagString: Untagged
@@ -151,6 +152,28 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!64 &8098962245684835828
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 125738}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 4300000, guid: d03d0c597bb388947bf16f564153364a, type: 3}
 --- !u!1 &137364
 GameObject:
   m_ObjectHideFlags: 0
@@ -162,6 +185,7 @@ GameObject:
   - component: {fileID: 450006}
   - component: {fileID: 3359344}
   - component: {fileID: 2381158}
+  - component: {fileID: 4195022066462697389}
   m_Layer: 0
   m_Name: test_asteroid_LOD1
   m_TagString: Untagged
@@ -240,6 +264,28 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!64 &4195022066462697389
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 137364}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 4300000, guid: 4fb53cd438460f84a97145bd5e35baf1, type: 3}
 --- !u!1 &151664
 GameObject:
   m_ObjectHideFlags: 0
@@ -253,6 +299,9 @@ GameObject:
   - component: {fileID: 11425652}
   - component: {fileID: -3321455816211106470}
   - component: {fileID: 2214284582106043752}
+  - component: {fileID: -5426306683997059894}
+  - component: {fileID: -4727667845944063184}
+  - component: {fileID: -1524655167637007039}
   m_Layer: 0
   m_Name: Asteroid 1
   m_TagString: Enemy
@@ -357,9 +406,12 @@ MonoBehaviour:
   maxHealth: 50
   lifeSeconds: 30
   killDistance: 80
-  hitVfxPrefab: {fileID: 0}
-  breakVfxPrefab: {fileID: 0}
-  explosionVfxPrefab: {fileID: 0}
+  hitVfxPrefab: {fileID: 2433282508537954060, guid: 3ef3ae421f71c5c4e97fe12dc2fc6312,
+    type: 3}
+  breakVfxPrefab: {fileID: 2433282508537954060, guid: 3ef3ae421f71c5c4e97fe12dc2fc6312,
+    type: 3}
+  explosionVfxPrefab: {fileID: 2433282508537954060, guid: 3ef3ae421f71c5c4e97fe12dc2fc6312,
+    type: 3}
   explodeOnAnyTouch: 1
   explodeOnTags:
   - Hand
@@ -374,8 +426,123 @@ MonoBehaviour:
   explosionRadius: 3
   explosionForce: 8
   chainReactAsteroids: 1
+  destroyAfterExplosion: 1
+  fallbackDespawnDelay: 1.2
+  disableCollidersOnExplode: 1
+  hideRenderersOnExplode: 0
+  animatorTrigger: Explode
+  minExplodeInterval: 0.25
   projectileTag: Projectile
   projectileHitDamage: 25
+--- !u!114 &-5426306683997059894
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 151664}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a35f6cfbfba9b548aaa00d52cfe8a50, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.XR.Interaction.Toolkit::UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable
+  m_InteractionManager: {fileID: 0}
+  m_Colliders:
+  - {fileID: 8098962245684835828}
+  - {fileID: 4195022066462697389}
+  - {fileID: 4182242803795573387}
+  m_InteractionLayers:
+    m_Bits: 1
+  m_DistanceCalculationMode: 1
+  m_SelectMode: 0
+  m_FocusMode: 1
+  m_CustomReticle: {fileID: 0}
+  m_AllowGazeInteraction: 0
+  m_AllowGazeSelect: 0
+  m_OverrideGazeTimeToSelect: 0
+  m_GazeTimeToSelect: 0.5
+  m_OverrideTimeToAutoDeselectGaze: 0
+  m_TimeToAutoDeselectGaze: 3
+  m_AllowGazeAssistance: 0
+  m_FirstHoverEntered:
+    m_PersistentCalls:
+      m_Calls: []
+  m_LastHoverExited:
+    m_PersistentCalls:
+      m_Calls: []
+  m_HoverEntered:
+    m_PersistentCalls:
+      m_Calls: []
+  m_HoverExited:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FirstSelectEntered:
+    m_PersistentCalls:
+      m_Calls: []
+  m_LastSelectExited:
+    m_PersistentCalls:
+      m_Calls: []
+  m_SelectEntered:
+    m_PersistentCalls:
+      m_Calls: []
+  m_SelectExited:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FirstFocusEntered:
+    m_PersistentCalls:
+      m_Calls: []
+  m_LastFocusExited:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FocusEntered:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FocusExited:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Activated:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Deactivated:
+    m_PersistentCalls:
+      m_Calls: []
+  m_StartingHoverFilters: []
+  m_StartingSelectFilters: []
+  m_StartingInteractionStrengthFilters: []
+--- !u!114 &-4727667845944063184
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 151664}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd4854a7cc42b4647a7f6e8ae695919d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AsteroidPinchExploder_XRI
+  asteroid: {fileID: 2214284582106043752}
+--- !u!65 &-1524655167637007039
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 151664}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &176588
 GameObject:
   m_ObjectHideFlags: 0
@@ -387,6 +554,7 @@ GameObject:
   - component: {fileID: 472972}
   - component: {fileID: 3374584}
   - component: {fileID: 2341100}
+  - component: {fileID: 4182242803795573387}
   m_Layer: 0
   m_Name: test_asteroid_LOD2
   m_TagString: Untagged
@@ -465,3 +633,25 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!64 &4182242803795573387
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 176588}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 4300000, guid: a06b7d8123805974182a9aee714fe013, type: 3}
