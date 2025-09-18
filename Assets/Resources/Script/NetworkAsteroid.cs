@@ -6,16 +6,40 @@ using UnityEngine;
 [RequireComponent(typeof(NetworkObject), typeof(Rigidbody))]
 public class NetworkAsteroid : NetworkBehaviour
 {
+    // ====== ENUM ======
+    public enum FxKind { Hit = 0, Break = 1, Explosion = 2 }
+
+    // ====== STATS ======
     [Header("Stats")]
     [SerializeField] float maxHealth = 50f;
     [SerializeField] float lifeSeconds = 30f;
     [SerializeField] float killDistance = 80f;
 
+    // ====== VFX ======
     [Header("Visual & VFX")]
+    [Tooltip("VFX saat kena hit (opsional)")]
     [SerializeField] GameObject hitVfxPrefab;
+    [Tooltip("VFX saat hancur biasa (opsional)")]
     [SerializeField] GameObject breakVfxPrefab;
-    [SerializeField] GameObject explosionVfxPrefab; // boleh kosong (pakai breakVfx)
+    [Tooltip("VFX saat meledak (opsional). Jika kosong akan pakai Break VFX.")]
+    [SerializeField] GameObject explosionVfxPrefab;
 
+    // Internal katalog VFX agar tiap klien bisa instantiate lokal tanpa registry/resources.
+    [SerializeField] GameObject[] vfxByKind = new GameObject[3];
+
+    // ====== SFX ======
+    [Header("SFX")]
+    [SerializeField] AudioClip hitSfx;
+    [SerializeField] AudioClip breakSfx;
+    [SerializeField] AudioClip explosionSfx;
+    [SerializeField, Range(0f, 1f)] float sfxVolume = 0.85f;
+    [SerializeField] bool randomizePitch = true;
+    [SerializeField, Range(0.5f, 1.5f)] float minPitch = 0.95f;
+    [SerializeField, Range(0.5f, 1.5f)] float maxPitch = 1.05f;
+    [SerializeField] float sfxMinDistance = 1.5f;
+    [SerializeField] float sfxMaxDistance = 18f;
+
+    // ====== TOUCH (MR) ======
     [Header("Touch (MR)")]
     [Tooltip("Paling gampang: sentuh apa saja langsung meledak (trigger/collision).")]
     [SerializeField] bool explodeOnAnyTouch = true;
@@ -28,16 +52,19 @@ public class NetworkAsteroid : NetworkBehaviour
     [Tooltip("Untuk sentuhan trigger: minimal kecepatan relatif (0 = abaikan).")]
     [SerializeField] float minRelativeSpeed = 0f;
 
+    // ====== SERVER VALIDATION ======
     [Header("Server Validation")]
     [Tooltip("Jarak toleransi saat server menerima permintaan ledak dari client.")]
     [SerializeField] float serverAcceptDistance = 1.2f;
 
+    // ====== EXPLOSION PHYSICS ======
     [Header("Explosion Physics")]
     [SerializeField] bool explosionAffectsRigidbodies = true;
     [SerializeField] float explosionRadius = 3f;
     [SerializeField] float explosionForce = 8f;
     [SerializeField] bool chainReactAsteroids = true;
 
+    // ====== EXPLOSION CONTROL ======
     [Header("Explosion Timing & Control")]
     [SerializeField] bool destroyAfterExplosion = true;   // TRUE: hancur setelah anim/VFX
     [SerializeField] float fallbackDespawnDelay = 1.2f;   // kalau durasi VFX tak bisa dihitung
@@ -46,10 +73,12 @@ public class NetworkAsteroid : NetworkBehaviour
     [SerializeField] string animatorTrigger = "Explode";  // kosongkan kalau tidak pakai Animator
     [SerializeField] float minExplodeInterval = 0.25f;    // anti-spam sentuhan beruntun (detik)
 
+    // ====== (LEGACY PROJECTILE - OPSIONAL) ======
     [Header("(Legacy Projectile - opsional)")]
     [SerializeField] string projectileTag = "Projectile";
     [SerializeField] float projectileHitDamage = 25f;
 
+    // ====== INTERNAL ======
     Rigidbody _rb;
     float _health;
     float _age;
@@ -68,6 +97,7 @@ public class NetworkAsteroid : NetworkBehaviour
         transform.position = startPos;
         // transform.localScale = Vector3.one * uniformScale;
 
+        // Catatan: beberapa Unity versi pakai Rigidbody.velocity. Project kamu pakai linearVelocity.
         _rb.linearVelocity = velocity;
         _rb.angularVelocity = angVel * Mathf.Deg2Rad;
 
@@ -81,6 +111,12 @@ public class NetworkAsteroid : NetworkBehaviour
         _rb = GetComponent<Rigidbody>();
         _rb.useGravity = false;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+        // Sinkronkan katalog VFX lokal dari field inspector lama agar semua klien punya referensi yang sama
+        if (vfxByKind == null || vfxByKind.Length < 3) vfxByKind = new GameObject[3];
+        vfxByKind[(int)FxKind.Hit] = hitVfxPrefab;
+        vfxByKind[(int)FxKind.Break] = breakVfxPrefab;
+        vfxByKind[(int)FxKind.Explosion] = explosionVfxPrefab;
     }
 
     public override void OnNetworkSpawn()
@@ -186,13 +222,20 @@ public class NetworkAsteroid : NetworkBehaviour
     void TakeDamage(float dmg, Vector3 hitPoint)
     {
         _health -= dmg;
-        if (hitVfxPrefab) SpawnFxClientRpc(hitVfxPrefab.name, hitPoint);
+
+        // VFX + SFX HIT ke semua klien
+        if (vfxByKind[(int)FxKind.Hit]) SpawnFxClientRpc((int)FxKind.Hit, hitPoint);
+        PlaySfxClientRpc((int)FxKind.Hit, hitPoint);
+
         if (_health <= 0f) BreakAndDespawn();
     }
 
     void BreakAndDespawn()
     {
-        if (breakVfxPrefab) SpawnFxClientRpc(breakVfxPrefab.name, transform.position);
+        // VFX + SFX BREAK ke semua klien
+        if (vfxByKind[(int)FxKind.Break]) SpawnFxClientRpc((int)FxKind.Break, transform.position);
+        PlaySfxClientRpc((int)FxKind.Break, transform.position);
+
         ServerDespawn();
     }
 
@@ -206,8 +249,11 @@ public class NetworkAsteroid : NetworkBehaviour
         _exploding = true;
 
         // 1) VFX di semua klien
-        if (explosionVfxPrefab) SpawnFxClientRpc(explosionVfxPrefab.name, at);
-        else if (breakVfxPrefab) SpawnFxClientRpc(breakVfxPrefab.name, at);
+        if (vfxByKind[(int)FxKind.Explosion]) SpawnFxClientRpc((int)FxKind.Explosion, at);
+        else if (vfxByKind[(int)FxKind.Break]) SpawnFxClientRpc((int)FxKind.Break, at);
+
+        // 1b) SFX di semua klien
+        PlaySfxClientRpc((int)FxKind.Explosion, at);
 
         // 2) Animator trigger di semua klien
         TriggerAnimatorClientRpc();
@@ -276,7 +322,7 @@ public class NetworkAsteroid : NetworkBehaviour
         else RequestExplodeServerRpc(at);
     }
 
-    // ---------------- Animator & FX ke klien ----------------
+    // ---------------- Animator & FX/SFX ke klien ----------------
     [ClientRpc]
     void TriggerAnimatorClientRpc()
     {
@@ -289,16 +335,46 @@ public class NetworkAsteroid : NetworkBehaviour
     }
 
     [ClientRpc]
-    void SpawnFxClientRpc(string fxName, Vector3 at)
+    void SpawnFxClientRpc(int fxIndex, Vector3 at)
     {
-        var prefab = AsteroidFxRegistry.Get(fxName);
+        if (vfxByKind == null || fxIndex < 0 || fxIndex >= vfxByKind.Length) return;
+        var prefab = vfxByKind[fxIndex];
         if (!prefab) return;
 
-        var go = Object.Instantiate(prefab, at, Quaternion.identity);
+        var go = Instantiate(prefab, at, Quaternion.identity);
         float life = ComputeFxLifetime(go);
-        Object.Destroy(go, life);
+        Destroy(go, life);
     }
 
+    [ClientRpc]
+    void PlaySfxClientRpc(int fxIndex, Vector3 at)
+    {
+        AudioClip clip = null;
+        switch ((FxKind)fxIndex)
+        {
+            case FxKind.Hit: clip = hitSfx; break;
+            case FxKind.Break: clip = breakSfx; break;
+            case FxKind.Explosion: clip = explosionSfx; break;
+        }
+        if (!clip) return;
+
+        var go = new GameObject("TempSFX");
+        go.transform.position = at;
+
+        var src = go.AddComponent<AudioSource>();
+        src.spatialBlend = 1f; // 3D
+        src.rolloffMode = AudioRolloffMode.Linear;
+        src.minDistance = sfxMinDistance;
+        src.maxDistance = sfxMaxDistance;
+        src.volume = sfxVolume;
+        if (randomizePitch) src.pitch = Random.Range(minPitch, maxPitch);
+        src.clip = clip;
+        src.Play();
+
+        Destroy(go, clip.length / Mathf.Max(0.01f, src.pitch));
+    }
+
+    // ---------------- Helpers ----------------
     float ComputeFxLifetime(GameObject fxInstance)
     {
         float maxT = 0.75f; // minimal aman
@@ -328,7 +404,6 @@ public class NetworkAsteroid : NetworkBehaviour
         return maxT;
     }
 
-    // ---------------- Helpers ----------------
     void SetAllCollidersEnabled(bool en)
     {
         foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = en;
@@ -341,22 +416,3 @@ public class NetworkAsteroid : NetworkBehaviour
 
 // Opsional untuk peluru (abaikan jika tidak dipakai)
 public interface IDealsDamage { float GetDamage(); }
-
-// Registry sederhana untuk VFX (drag prefabs ke sini di satu GameObject di scene)
-public class AsteroidFxRegistry : MonoBehaviour
-{
-    public GameObject[] prefabs; // nama prefab harus unik
-    static AsteroidFxRegistry _inst;
-
-    void Awake() { _inst = this; }
-
-    public static GameObject Get(string name)
-    {
-        if (_inst == null || _inst.prefabs == null || string.IsNullOrEmpty(name)) return null;
-        foreach (var p in _inst.prefabs) if (p && p.name == name) return p;
-
-        // Fallback: coba Resources.Load dengan nama yang sama
-        var res = Resources.Load<GameObject>(name);
-        return res;
-    }
-}

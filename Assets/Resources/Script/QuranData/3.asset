@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64a25be868ff1104185d0219695afa8e, type: 3}
+  m_Name: 3
+  m_EditorClassIdentifier: Assembly-CSharp::QuranData
+  ayatJudul: {fileID: 21300000, guid: 571b62dfe9cc70444b397141b12330c9, type: 3}
+  ayatSprite: {fileID: 21300000, guid: c76e463eea6e76d4e8839b07aba1bf3e, type: 3}
+  artiSprite: {fileID: 21300000, guid: 4bea3061964804042992be74eec35a4a, type: 3}
+  ayatAudio: {fileID: 8300000, guid: 681d2698a142d6f49b476d4df5981d0c, type: 3}
+  artiAudio: {fileID: 0}

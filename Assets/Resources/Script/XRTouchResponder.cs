@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
-[RequireComponent(typeof(XRSimpleInteractable), typeof(NetworkObject))]
+[RequireComponent(typeof(NetworkObject))]
 public class XRTouchResponder : NetworkBehaviour
 {
     [Header("Data Planet (opsional)")]
@@ -104,10 +104,10 @@ public class XRTouchResponder : NetworkBehaviour
         if (!InformasiUI) InformasiUI = GetComponent<PlanetInfoUI>();
         voiceClip = Data.narration;
         InformasiUI.planetDescImage.sprite = Data.infoImage;
-        _interactable = GetComponent<XRSimpleInteractable>();
-        _interactable.hoverEntered.AddListener(OnHoverEnter);
-        _interactable.hoverExited.AddListener(OnHoverExit);
-        _interactable.selectEntered.AddListener(OnSelectEnter); // Poke/Press
+        //_interactable = GetComponent<XRSimpleInteractable>();
+        //_interactable.hoverEntered.AddListener(OnHoverEnter);
+        //_interactable.hoverExited.AddListener(OnHoverExit);
+        //_interactable.selectEntered.AddListener(OnSelectEnter); // Poke/Press
 
         if (autoFindButtonsInChildren)
         {
@@ -154,12 +154,12 @@ public class XRTouchResponder : NetworkBehaviour
 
     void OnDestroy()
     {
-        if (_interactable)
-        {
-            _interactable.hoverEntered.RemoveListener(OnHoverEnter);
-            _interactable.hoverExited.RemoveListener(OnHoverExit);
-            _interactable.selectEntered.RemoveListener(OnSelectEnter);
-        }
+        //if (_interactable)
+        //{
+        //    _interactable.hoverEntered.RemoveListener(OnHoverEnter);
+        //    _interactable.hoverExited.RemoveListener(OnHoverExit);
+        //    _interactable.selectEntered.RemoveListener(OnSelectEnter);
+        //}
         if (toggleButton) toggleButton.onClick.RemoveListener(DoTogglePanel);
         if (soundButton) soundButton.onClick.RemoveListener(DoToggleAudio);
 
@@ -195,23 +195,23 @@ public class XRTouchResponder : NetworkBehaviour
     }
 
     // ---------- XRI EVENTS (Poke/Press) ----------
-    void OnHoverEnter(HoverEnterEventArgs _)
-    {
-        if (!useHoverScale) return;
-        LeanTween.cancel(gameObject);
-        LeanTween.scale(gameObject, _initialScale * hoverScale, hoverDuration)
-                 .setEaseOutQuad()
-                 .setIgnoreTimeScale(ignoreTimeScale);
-    }
+    //void OnHoverEnter(HoverEnterEventArgs _)
+    //{
+    //    if (!useHoverScale) return;
+    //    LeanTween.cancel(gameObject);
+    //    LeanTween.scale(gameObject, _initialScale * hoverScale, hoverDuration)
+    //             .setEaseOutQuad()
+    //             .setIgnoreTimeScale(ignoreTimeScale);
+    //}
 
-    void OnHoverExit(HoverExitEventArgs _)
-    {
-        if (!useHoverScale) return;
-        LeanTween.cancel(gameObject);
-        LeanTween.scale(gameObject, _initialScale, hoverDuration)
-                 .setEaseOutQuad()
-                 .setIgnoreTimeScale(ignoreTimeScale);
-    }
+    //void OnHoverExit(HoverExitEventArgs _)
+    //{
+    //    if (!useHoverScale) return;
+    //    LeanTween.cancel(gameObject);
+    //    LeanTween.scale(gameObject, _initialScale, hoverDuration)
+    //             .setEaseOutQuad()
+    //             .setIgnoreTimeScale(ignoreTimeScale);
+    //}
 
     void OnSelectEnter(SelectEnterEventArgs _)
     {
