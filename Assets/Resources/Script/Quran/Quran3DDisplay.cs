@@ -1,6 +1,5 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public class Quran3DDisplay : MonoBehaviour
 {
@@ -29,22 +28,9 @@ public class Quran3DDisplay : MonoBehaviour
     {
         _startLocalPos = transform.localPosition;
         ApplyVolume();
-    }
 
-    void Update()
-    {
-        // bobbing
-        //_t += Time.deltaTime * bobSpeed;
-        //var p = _startLocalPos; p.y += Mathf.Sin(_t) * bobAmplitude;
-        //transform.localPosition = p;
-
-        //// billboard
-        //if (billboardTarget)
-        //{
-        //    var fwd = (transform.position - billboardTarget.position).normalized;
-        //    var targetRot = Quaternion.LookRotation(fwd, Vector3.up);
-        //    transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * faceCameraLerp);
-        //}
+        if (ayatSource) ayatSource.playOnAwake = false;
+        if (artiSource) artiSource.playOnAwake = false;
     }
 
     public void Show(QuranData data)
@@ -59,8 +45,8 @@ public class Quran3DDisplay : MonoBehaviour
 
         if (autoPlayOnShow && _current != null)
         {
-            PlayAyat();
-            PlayArti();
+            PlayAyatAt(0);
+            PlayArtiAt(0);
         }
     }
 
@@ -72,14 +58,50 @@ public class Quran3DDisplay : MonoBehaviour
 
     public void PlayAyat()
     {
-        if (!_current || !ayatSource || !_current.ayatAudio) return;
-        ayatSource.Stop(); ayatSource.clip = _current.ayatAudio; ayatSource.Play();
+        PlayAyatAt(0);
     }
 
     public void PlayArti()
     {
+        PlayArtiAt(0);
+    }
+
+    public void PlayAyatAt(float offsetSeconds)
+    {
+        if (!_current || !ayatSource || !_current.ayatAudio) return;
+
+        ayatSource.Stop();
+        ayatSource.clip = _current.ayatAudio;
+
+        // Mulai dari offset yang sama antar klien
+        float len = ayatSource.clip.length;
+        float t = len > 0 ? Mathf.Repeat(offsetSeconds, len) : 0f;
+#if UNITY_WEBGL
+        ayatSource.time = t; // timeSamples kurang stabil di WebGL
+#else
+        ayatSource.time = t;
+        // Alternatif lebih presisi:
+        // ayatSource.timeSamples = Mathf.Clamp((int)(t * ayatSource.clip.frequency), 0, ayatSource.clip.samples - 1);
+#endif
+        ayatSource.Play();
+    }
+
+    public void PlayArtiAt(float offsetSeconds)
+    {
         if (!_current || !artiSource || !_current.artiAudio) return;
-        artiSource.Stop(); artiSource.clip = _current.artiAudio; artiSource.Play();
+
+        artiSource.Stop();
+        artiSource.clip = _current.artiAudio;
+
+        float len = artiSource.clip.length;
+        float t = len > 0 ? Mathf.Repeat(offsetSeconds, len) : 0f;
+#if UNITY_WEBGL
+        artiSource.time = t;
+#else
+        artiSource.time = t;
+        // artiSource.timeSamples = Mathf.Clamp((int)(t * artiSource.clip.frequency), 0, artiSource.clip.samples - 1);
+#endif
+        artiSource.Play();
     }
 
     public void StopAll()

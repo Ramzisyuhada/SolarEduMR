@@ -81,7 +81,6 @@ public class NetworkAsteroidSpawner : NetworkBehaviour
         // angular vel (deg/s → rad/s di asteroid)
         Vector3 angVel = Random.onUnitSphere * Random.Range(angularDegPerSec.x, angularDegPerSec.y);
 
-        float scale = Random.Range(scaleRange.x, scaleRange.y);
         float life = Random.Range(lifeTimeRange.x, lifeTimeRange.y);
 
         // pick prefab
@@ -95,7 +94,7 @@ public class NetworkAsteroidSpawner : NetworkBehaviour
         var ast = no.GetComponent<NetworkAsteroid>();
         if (ast)
         {
-            ast.ServerInit(worldCenter, pos, velocity, angVel, scale, -1f);
+            ast.ServerInit(worldCenter, pos, velocity, angVel, -1f);
             // override life & kill distance bila perlu:
             OverrideLifeAndKill(ast, life, killDistance);
         }

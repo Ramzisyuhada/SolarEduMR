@@ -19,7 +19,7 @@ public class Planet : NetworkBehaviour
         new(Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<Quaternion> NetRot =
         new(Quaternion.identity, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-
+    
     [Header("Refs")]
     public SolarGameManager manager;
 
