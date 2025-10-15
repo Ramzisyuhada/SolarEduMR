@@ -132,7 +132,7 @@ MonoBehaviour:
   DeferredDespawnTick: 0
   Ownership: 1
   AlwaysReplicateAsRoot: 0
-  SynchronizeTransform: 1
+  SynchronizeTransform: 0
   ActiveSceneSynchronization: 0
   SceneMigrationSynchronization: 1
   SpawnWithObservers: 1
@@ -155,13 +155,19 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   PlanetName: 
   IdUrutanBenar: 0
-  SlotTerpasang:
+  CurrentOrbitIndex:
     m_InternalValue: 0
   NetPos:
     m_InternalValue: {x: 0, y: 0, z: 0}
   NetRot:
     m_InternalValue: {x: 0, y: 0, z: 0, w: 1}
   manager: {fileID: 0}
+  maxSnapDistance: 0.6
+  orientToSnapPoint: 1
+  orbitWhenSnapped: 1
+  orbitSpeedDeg: 20
+  selfSpinDeg: 50
+  orbitPlaneTiltDeg: 0
 --- !u!1 &1708399313684614
 GameObject:
   m_ObjectHideFlags: 0

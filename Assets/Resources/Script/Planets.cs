@@ -19,7 +19,7 @@ public class Planet : NetworkBehaviour
         new(Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<Quaternion> NetRot =
         new(Quaternion.identity, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-    
+
     [Header("Refs")]
     public SolarGameManager manager;
 
@@ -38,7 +38,8 @@ public class Planet : NetworkBehaviour
 
     // runtime
     Rigidbody _rb;
-    bool _isGrabbed;
+    bool _isGrabbed;       // state lokal di klien ini
+    bool _svGrabbed;       // state grabbed versi server (untuk logic server)
     OrbitSlot _currentSlot;
     float _orbitAngleDeg;
     float _orbitRadius;
@@ -50,7 +51,12 @@ public class Planet : NetworkBehaviour
     {
         if (!manager) manager = FindObjectOfType<SolarGameManager>();
         _rb = GetComponent<Rigidbody>();
-        if (_rb) { _rb.useGravity = false; _rb.isKinematic = false; }
+        if (_rb)
+        {
+            _rb.useGravity = false;
+            _rb.isKinematic = false;
+            _rb.interpolation = RigidbodyInterpolation.Interpolate; // haluskan visual di klien
+        }
         Debug.Log($"[Planet Awake] {name} mgr={(manager ? manager.name : "NULL")}");
     }
 
@@ -65,8 +71,9 @@ public class Planet : NetworkBehaviour
 
     void Update()
     {
-        // klien non-server: lerp ke nilai network
-        if (!IsServer && !IsOwner)
+        // Semua klien merender dari NetPos/NetRot selama TIDAK sedang digrab oleh klien tersebut.
+        // (Owner pun ikut smoothing untuk mencegah loncat saat transisi ownership.)
+        if (!IsServer && !_isGrabbed)
         {
             transform.position = Vector3.Lerp(transform.position, NetPos.Value, 0.35f);
             transform.rotation = Quaternion.Slerp(transform.rotation, NetRot.Value, 0.35f);
@@ -84,44 +91,48 @@ public class Planet : NetworkBehaviour
         float rad = _orbitAngleDeg * Mathf.Deg2Rad;
         Vector3 offset = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad)) * _orbitRadius;
 
+        // tilt plane jika perlu
         if (Mathf.Abs(orbitPlaneTiltDeg) > 0.001f)
             offset = Quaternion.Euler(orbitPlaneTiltDeg, 0f, 0f) * offset;
 
+        // yaw mengikuti orientasi slot
         Vector3 center = _currentSlot.transform.position;
         Quaternion yaw = Quaternion.Euler(0f, _currentSlot.transform.eulerAngles.y, 0f);
         Vector3 worldPos = center + (yaw * offset);
 
+        // self spin
         Quaternion worldRot = transform.rotation * Quaternion.Euler(0f, selfSpinDeg * Time.deltaTime, 0f);
 
+        // tulis state server & sinkronkan
         transform.SetPositionAndRotation(worldPos, worldRot);
         NetPos.Value = worldPos;
         NetRot.Value = worldRot;
     }
-    bool _svGrabbed; // hanya dipakai server
 
-    [ServerRpc(RequireOwnership = false)]
-    void SetGrabStateServerRpc(bool grabbed)
-    {
-        _svGrabbed = grabbed;
-        if (_rb) _rb.isKinematic = grabbed;
-        if (grabbed) StopOrbit();
-    }
-    // ===== Public hooks untuk sistem input =====
+    // ======== GRAB / RELEASE HOOKS (dipanggil oleh sistem input di klien) ========
+
     public void OnGrabbedByClient()
     {
-        _isGrabbed = true;                    // lokal (klien ini)
-        SetGrabStateServerRpc(true);          // beri tahu server
-        if (!IsOwner) RequestOwnershipServerRpc(NetworkManager.LocalClientId);
+        _isGrabbed = true;
+
+        // Minta ownership ke klien ini DULU, lalu set state grabbed (server akan broadcast kinematic)
+        RequestOwnershipServerRpc(NetworkManager.LocalClientId);
+        SetGrabStateServerRpc(true);
     }
 
     public void OnReleasedByClient()
     {
-        _isGrabbed = false;                   // lokal
-        SetGrabStateServerRpc(false);         // beri tahu server
-        TrySnapToCandidateOrNearestServerRpc(transform.position);
+        _isGrabbed = false;
+
+        // Balikkan ownership ke server agar klien langsung kembali lerp saat rilis
+        RequestOwnershipServerRpc(NetworkManager.ServerClientId);
+
+        // Lepas grabbed (server broadcast kinematic false), lalu server yang menentukan snap
+        SetGrabStateServerRpc(false);
+        TrySnapToCandidateOrNearestServerRpc(); // TANPA arg posisi dari klien
     }
 
-    // ===== Server-side reset (dipanggil GameManager di awal ronde) =====
+    // ======== SERVER-SIDE RESET (dipanggil GameManager di awal ronde) ========
     public void ResetServer(Vector3 worldPos)
     {
         if (!IsServer) return;
@@ -129,6 +140,14 @@ public class Planet : NetworkBehaviour
         _candidateIndices.Clear();
         _currentSlot = null;
         _isGrabbed = false;
+        _svGrabbed = false;
+
+        if (_rb)
+        {
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = false;
+        }
 
         transform.SetPositionAndRotation(worldPos, Quaternion.identity);
         NetPos.Value = transform.position;
@@ -176,7 +195,7 @@ public class Planet : NetworkBehaviour
 
     // ======= SNAP SAAT RILIS (pakai kandidat atau terdekat) =======
     [ServerRpc(RequireOwnership = false)]
-    public void TrySnapToCandidateOrNearestServerRpc(Vector3 worldPos)
+    public void TrySnapToCandidateOrNearestServerRpc()
     {
         if (!manager)
         {
@@ -191,6 +210,8 @@ public class Planet : NetworkBehaviour
             SyncTransformOnly();
             return;
         }
+
+        var worldPos = transform.position; // gunakan posisi server yang otoritatif
 
         OrbitSlot best = null;
         float bestDist = float.MaxValue;
@@ -228,7 +249,7 @@ public class Planet : NetworkBehaviour
             float maxDistSqr = maxSnapDistance * maxSnapDistance;
             if (bestDist > maxDistSqr)
             {
-                Debug.LogWarning($"[SNAP] Terdekat adalah slot {best.Index} tapi JAUH (distSqr={bestDist:F3} > maxSqr={maxDistSqr:F3}). Tidak snap.");
+                Debug.LogWarning($"[SNAP] Terdekat slot {best.Index} tapi JAUH (distSqr={bestDist:F3} > maxSqr={maxDistSqr:F3}). Tidak snap.");
                 SyncTransformOnly();
                 return;
             }
@@ -249,10 +270,18 @@ public class Planet : NetworkBehaviour
             return;
         }
 
+        if (_rb)
+        {
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = true;      // kunci fisika saat snap
+            SetKinematicClientRpc(true); // samakan di semua klien
+        }
+
         transform.position = slot.SnapPoint.position;
         if (orientToSnapPoint) transform.rotation = slot.SnapPoint.rotation;
 
-        // WAJIB: set index orbit saat ini
+        // set index orbit saat ini
         CurrentOrbitIndex.Value = slot.Index;
 
         // mulai orbit keliling slot
@@ -297,6 +326,25 @@ public class Planet : NetworkBehaviour
     void RequestOwnershipServerRpc(ulong clientId)
     {
         if (IsSpawned) NetworkObject.ChangeOwnership(clientId);
+    }
+
+    // ======== Grab state & kinematic sync ========
+    [ServerRpc(RequireOwnership = false)]
+    void SetGrabStateServerRpc(bool grabbed)
+    {
+        _svGrabbed = grabbed;
+
+        if (_rb) _rb.isKinematic = grabbed; // server-side
+        SetKinematicClientRpc(grabbed);     // samakan ke semua klien
+
+        if (grabbed) StopOrbit();
+        // saat dilepas, orbit akan dimulai lagi ketika ApplySnapToSlot dipanggil
+    }
+
+    [ClientRpc]
+    void SetKinematicClientRpc(bool kinematic)
+    {
+        if (_rb) _rb.isKinematic = kinematic;
     }
 
     // ===== Debug Utils =====
