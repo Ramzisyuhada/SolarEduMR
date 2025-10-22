@@ -5043,13 +5043,13 @@ MonoBehaviour:
   DeferredDespawnTick: 0
   Ownership: 1
   AlwaysReplicateAsRoot: 0
-  SynchronizeTransform: 1
-  ActiveSceneSynchronization: 0
+  SynchronizeTransform: 0
+  ActiveSceneSynchronization: 1
   SceneMigrationSynchronization: 1
   SpawnWithObservers: 1
   DontDestroyWithOwner: 0
-  AutoObjectParentSync: 1
-  SyncOwnerTransformWhenParented: 1
+  AutoObjectParentSync: 0
+  SyncOwnerTransformWhenParented: 0
   AllowOwnerToParent: 0
 --- !u!114 &2479679395517597751
 MonoBehaviour:
@@ -5079,6 +5079,7 @@ MonoBehaviour:
   orbitSpeedDeg: 20
   selfSpinDeg: 50
   orbitPlaneTiltDeg: 0
+  currentSlot: {fileID: 0}
 --- !u!54 &-4220857213905583028
 Rigidbody:
   m_ObjectHideFlags: 0

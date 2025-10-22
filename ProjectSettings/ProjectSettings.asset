@@ -141,8 +141,11 @@ PlayerSettings:
   loadStoreDebugModeEnabled: 0
   visionOSBundleVersion: 1.0
   tvOSBundleVersion: 1.0
-  bundleVersion: 1.1
-  preloadedAssets: []
+  bundleVersion: 0.1.8
+  preloadedAssets:
+  - {fileID: -2012666915879036201, guid: e4092494f37fcd74c9e900c0aa72f3ef, type: 2}
+  - {fileID: 6975400388064242773, guid: 95390e03a10f8774d98cb17f6e3a51dd, type: 2}
+  - {fileID: 11400000, guid: bf7e823c1be0db345b05de1c9c9beb5e, type: 2}
   metroInputSource: 0
   wsaTransparentSwapchain: 0
   m_HolographicPauseOnTrackingLoss: 1
@@ -164,14 +167,14 @@ PlayerSettings:
   androidMaxAspectRatio: 2.4
   androidMinAspectRatio: 1
   applicationIdentifier:
-    Android: com.DefaultCompany.MR_TataSurya
+    Android: com.DefaultCompany.MR_TataSurya1
   buildNumber:
     Standalone: 0
     VisionOS: 0
     iPhone: 0
     tvOS: 0
   overrideDefaultApplicationIdentifier: 1
-  AndroidBundleVersionCode: 2
+  AndroidBundleVersionCode: 8
   AndroidMinSdkVersion: 29
   AndroidTargetSdkVersion: 32
   AndroidPreferredInstallLocation: 0
