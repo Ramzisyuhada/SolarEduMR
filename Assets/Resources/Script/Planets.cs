@@ -6,58 +6,47 @@ using System.Linq;
 [DisallowMultipleComponent]
 public class Planet : NetworkBehaviour
 {
+    // ===== Info & Network =====
     [Header("Info")]
     public string PlanetName = "Planet";
-    [Tooltip("Urutan benar dari Matahari (1..8)")]
+    [Tooltip("Urutan benar dari Matahari (1..N)")]
     public int IdUrutanBenar = 1;
 
     [Header("Networked State")]
     public NetworkVariable<int> CurrentOrbitIndex =
         new(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-
-    [SerializeField]
-    private NetworkVariable<Vector3> NetPos =
+    public NetworkVariable<Vector3> NetPos =
         new(Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-
-    [SerializeField]
-    private NetworkVariable<Quaternion> NetRot =
+    public NetworkVariable<Quaternion> NetRot =
         new(Quaternion.identity, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-
-    // Accessor (read-only) bila diperlukan di luar
-    public Vector3 NetPosValue => NetPos.Value;
-    public Quaternion NetRotValue => NetRot.Value;
 
     [Header("Refs")]
     public SolarGameManager manager;
 
+    // ===== Snap =====
     [Header("Snap Settings")]
-    [Tooltip("Maksimal jarak untuk fallback snap ke orbit terdekat (kalau tidak ada kandidat).")]
-    public float maxSnapDistance = 0.5f;
-    [Tooltip("Rotasi planet mengikuti SnapPoint.")]
+    [Tooltip("Batas jarak fallback snap ke slot terdekat ketika tidak ada kandidat.")]
+    public float maxSnapDistance = 0.6f;
     public bool orientToSnapPoint = true;
 
+    // ===== Orbit Motion =====
     [Header("Orbit Motion")]
-    [Tooltip("Aktifkan supaya planet mengelilingi orbit setelah tersnap.")]
     public bool orbitWhenSnapped = true;
-    [Tooltip("Kecepatan mengelilingi orbit (derajat/detik).")]
-    public float orbitSpeedDeg = 20f;
-    [Tooltip("Rotasi diri (spin) derajat/detik.")]
-    public float selfSpinDeg = 50f;
-    [Tooltip("Kemiringan bidang orbit (derajat). 0 = datar.")]
+    public float orbitSpeedDeg = 20f;   // derajat per detik
+    public float selfSpinDeg = 50f;     // derajat per detik
     public float orbitPlaneTiltDeg = 0f;
 
-    // Runtime
-    [HideInInspector] public OrbitSlot currentSlot;
+    // runtime
+    Rigidbody _rb;
+    bool _isGrabbed;       // state lokal di klien ini
+    bool _svGrabbed;       // state grabbed versi server (untuk logic server)
+    OrbitSlot _currentSlot;
     float _orbitAngleDeg;
     float _orbitRadius;
-    bool _isGrabbed;                 // status server tentang sedang dipegang
 
-    // Kandidat index slot dari trigger child
-    readonly HashSet<int> _candidateOrbitIndices = new();
+    // kandidat slot dari trigger
+    readonly HashSet<int> _candidateIndices = new();
 
-    Rigidbody _rb;
-
-    // ---------- Life Cycle ----------
     void Awake()
     {
         if (!manager) manager = FindObjectOfType<SolarGameManager>();
@@ -65,21 +54,26 @@ public class Planet : NetworkBehaviour
         if (_rb)
         {
             _rb.useGravity = false;
-            _rb.isKinematic = false; // server yang menggerakkan; client hanya lerp visual
+            _rb.isKinematic = false;
+            _rb.interpolation = RigidbodyInterpolation.Interpolate; // haluskan visual di klien
         }
+        Debug.Log($"[Planet Awake] {name} mgr={(manager ? manager.name : "NULL")}");
     }
 
-    public override void OnNetworkSpawn()
+    void Start()
     {
-        // Sinkron state transform saat client join
+        // Saat client join, pastikan posisi awal ikut NetPos / NetRot
         if (!IsServer)
+        {
             transform.SetPositionAndRotation(NetPos.Value, NetRot.Value);
+        }
     }
 
     void Update()
     {
-        // Klien: smooth ke nilai network (server yang menulis)
-        if (!IsServer)
+        // Semua klien merender dari NetPos/NetRot selama TIDAK sedang digrab oleh klien tersebut.
+        // (Owner pun ikut smoothing untuk mencegah loncat saat transisi ownership.)
+        if (!IsServer && !_isGrabbed)
         {
             transform.position = Vector3.Lerp(transform.position, NetPos.Value, 0.35f);
             transform.rotation = Quaternion.Slerp(transform.rotation, NetRot.Value, 0.35f);
@@ -88,85 +82,85 @@ public class Planet : NetworkBehaviour
 
     void LateUpdate()
     {
-        if (!IsServer) return;                             // hanya server yang menggerakkan
-        if (!orbitWhenSnapped || currentSlot == null) return;
-        if (_isGrabbed) return;
+        if (!IsServer) return;
+        if (!orbitWhenSnapped || _currentSlot == null || _svGrabbed) return;
 
         _orbitAngleDeg += orbitSpeedDeg * Time.deltaTime;
 
-        // offset pada bidang XZ
+        // pos di bidang XZ
         float rad = _orbitAngleDeg * Mathf.Deg2Rad;
         Vector3 offset = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad)) * _orbitRadius;
 
-        // tilt opsional
+        // tilt plane jika perlu
         if (Mathf.Abs(orbitPlaneTiltDeg) > 0.001f)
             offset = Quaternion.Euler(orbitPlaneTiltDeg, 0f, 0f) * offset;
 
-        // pusat orbit & yaw parent
-        Vector3 center = currentSlot.transform.position;
-        Quaternion orbitYaw = Quaternion.Euler(0f, currentSlot.transform.eulerAngles.y, 0f);
-        Vector3 worldPos = center + (orbitYaw * offset);
+        // yaw mengikuti orientasi slot
+        Vector3 center = _currentSlot.transform.position;
+        Quaternion yaw = Quaternion.Euler(0f, _currentSlot.transform.eulerAngles.y, 0f);
+        Vector3 worldPos = center + (yaw * offset);
 
-        // spin diri
+        // self spin
         Quaternion worldRot = transform.rotation * Quaternion.Euler(0f, selfSpinDeg * Time.deltaTime, 0f);
 
-        // apply & broadcast
+        // tulis state server & sinkronkan
         transform.SetPositionAndRotation(worldPos, worldRot);
         NetPos.Value = worldPos;
         NetRot.Value = worldRot;
     }
 
-    // ---------- Server-side Reset ----------
+    // ======== GRAB / RELEASE HOOKS (dipanggil oleh sistem input di klien) ========
+
+    public void OnGrabbedByClient()
+    {
+        _isGrabbed = true;
+
+        // Minta ownership ke klien ini DULU, lalu set state grabbed (server akan broadcast kinematic)
+        RequestOwnershipServerRpc(NetworkManager.LocalClientId);
+        SetGrabStateServerRpc(true);
+    }
+
+    public void OnReleasedByClient()
+    {
+        _isGrabbed = false;
+
+        // Balikkan ownership ke server agar klien langsung kembali lerp saat rilis
+        RequestOwnershipServerRpc(NetworkManager.ServerClientId);
+
+        // Lepas grabbed (server broadcast kinematic false), lalu server yang menentukan snap
+        SetGrabStateServerRpc(false);
+        TrySnapToCandidateOrNearestServerRpc(); // TANPA arg posisi dari klien
+    }
+
+    // ======== SERVER-SIDE RESET (dipanggil GameManager di awal ronde) ========
     public void ResetServer(Vector3 worldPos)
     {
         if (!IsServer) return;
 
-        currentSlot = null;
-        _candidateOrbitIndices.Clear();
+        _candidateIndices.Clear();
+        _currentSlot = null;
         _isGrabbed = false;
+        _svGrabbed = false;
+
+        if (_rb)
+        {
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = false;
+        }
 
         transform.SetPositionAndRotation(worldPos, Quaternion.identity);
         NetPos.Value = transform.position;
         NetRot.Value = transform.rotation;
         CurrentOrbitIndex.Value = 0;
 
-        // pastikan server own (authority penuh di server)
         if (IsSpawned && NetworkObject.OwnerClientId != NetworkManager.ServerClientId)
             NetworkObject.ChangeOwnership(NetworkManager.ServerClientId);
+
+        Debug.Log($"[RESET] {PlanetName} @ {worldPos}");
     }
 
-    public void SetOrbitIndex(int idx)
-    {
-        if (!IsServer) return;
-        CurrentOrbitIndex.Value = idx;
-    }
-
-    // ---------- Hooks dari sistem input (XR/HVR) ----------
-    public void OnGrabbedByClient()
-    {
-        // Client memberi tahu server bahwa sedang dipegang
-        SetGrabStateServerRpc(true);
-        // TIDAK memindahkan ownership ke client (server-authoritative penuh)
-    }
-
-    public void OnReleasedByClient()
-    {
-        // Client memberi tahu server bahwa sudah dilepas
-        SetGrabStateServerRpc(false);
-        // Snap saat rilis diputuskan server
-        TrySnapToCandidateOrNearestServerRpc(transform.position);
-    }
-
-    // ---------- Server RPCs ----------
-    [ServerRpc(RequireOwnership = false)]
-    void SetGrabStateServerRpc(bool grabbed)
-    {
-        _isGrabbed = grabbed;
-        if (_rb) _rb.isKinematic = grabbed; // saat dipegang, matikan physics server
-        if (grabbed) StopOrbit();
-    }
-
-    // Dipanggil trigger: registrasi kandidat index orbit (add/remove)
+    // ======= KANDIDAT (dipanggil OrbitSlot via trigger) =======
     [ServerRpc(RequireOwnership = false)]
     public void RegisterCandidateServerRpc(int orbitIndex, bool add)
     {
@@ -176,132 +170,205 @@ public class Planet : NetworkBehaviour
     public void RegisterCandidate(int orbitIndex, bool add)
     {
         if (!IsServer) return;
-        if (add) _candidateOrbitIndices.Add(orbitIndex);
-        else _candidateOrbitIndices.Remove(orbitIndex);
+        if (add)
+        {
+            if (_candidateIndices.Add(orbitIndex))
+                Debug.Log($"[CANDIDATE +] {PlanetName} add slot {orbitIndex} (now: {string.Join(",", _candidateIndices)})");
+        }
+        else
+        {
+            if (_candidateIndices.Remove(orbitIndex))
+                Debug.Log($"[CANDIDATE -] {PlanetName} remove slot {orbitIndex} (now: {string.Join(",", _candidateIndices)})");
+        }
     }
 
-    // Snap langsung ke slot tertentu (dipanggil OrbitSlot saat enter trigger, jika diinginkan)
+    // ======= SNAP ON ENTER (opsional) =======
     [ServerRpc(RequireOwnership = false)]
     public void TrySnapToSpecificSlotServerRpc(int slotIndex)
     {
-        if (!manager || manager.slots == null) { SyncTransformOnly(); return; }
+        if (!manager || manager.slots == null) { Debug.LogWarning($"[SNAP SPECIFIC] manager/slots NULL"); return; }
         var slot = manager.slots.FirstOrDefault(s => s && s.Index == slotIndex);
-        if (!slot || !slot.SnapPoint) { SyncTransformOnly(); return; }
+        if (!slot || !slot.SnapPoint) { Debug.LogWarning($"[SNAP SPECIFIC] Slot {slotIndex} tidak valid / SnapPoint null"); return; }
 
-        transform.position = slot.SnapPoint.position;
-        if (orientToSnapPoint) transform.rotation = slot.SnapPoint.rotation;
-
-        NetPos.Value = transform.position;
-        NetRot.Value = transform.rotation;
-        CurrentOrbitIndex.Value = slot.Index;
-
-        StartOrbitAround(slot);
-        try { slot.BlinkFeedback(); } catch { /* opsional */ }
-
-        // pastikan server own
-        if (IsSpawned && NetworkObject.OwnerClientId != NetworkManager.ServerClientId)
-            NetworkObject.ChangeOwnership(NetworkManager.ServerClientId);
-
-        _candidateOrbitIndices.Clear();
+        ApplySnapToSlot(slot);
     }
 
-    // Snap saat rilis: pilih dari kandidat / nearest global dengan batas jarak
+    // ======= SNAP SAAT RILIS (pakai kandidat atau terdekat) =======
     [ServerRpc(RequireOwnership = false)]
-    public void TrySnapToCandidateOrNearestServerRpc(Vector3 worldPos)
+    public void TrySnapToCandidateOrNearestServerRpc()
     {
-        if (!manager || manager.slots == null || manager.slots.Length == 0)
-        { SyncTransformOnly(); return; }
-
-        OrbitSlot target = null; float best = float.MaxValue;
-
-        // 1) kandidat dari trigger
-        if (_candidateOrbitIndices.Count > 0)
+        if (!manager)
         {
-            foreach (int idx in _candidateOrbitIndices)
+            manager = FindObjectOfType<SolarGameManager>();
+            Debug.LogWarning($"[SNAP] manager null, re-find => {(manager ? "OK" : "FAIL")}");
+        }
+
+        if (!manager || manager.slots == null || manager.slots.Length == 0)
+        {
+            Debug.LogWarning($"[SNAP] GAGAL: manager/slots kosong di SERVER. Tidak bisa snap.");
+            DumpSlotsOnServer();
+            SyncTransformOnly();
+            return;
+        }
+
+        var worldPos = transform.position; // gunakan posisi server yang otoritatif
+
+        OrbitSlot best = null;
+        float bestDist = float.MaxValue;
+
+        // 1) jika ada kandidat
+        if (_candidateIndices.Count > 0)
+        {
+            foreach (var idx in _candidateIndices)
             {
                 var s = manager.slots.FirstOrDefault(o => o && o.Index == idx);
                 if (s == null || !s.SnapPoint) continue;
                 float d = (s.SnapPoint.position - worldPos).sqrMagnitude;
-                if (d < best) { best = d; target = s; }
+                if (d < bestDist) { bestDist = d; best = s; }
             }
+            Debug.Log($"[SNAP] {PlanetName} pilih dari kandidat => {(best ? best.Index.ToString() : "NONE")} distSqr={bestDist:F4}");
         }
 
-        // 2) fallback: nearest global (cek jarak maksimum)
-        if (target == null)
+        // 2) fallback: global nearest
+        if (best == null)
         {
             foreach (var s in manager.slots)
             {
                 if (!s || !s.SnapPoint) continue;
                 float d = (s.SnapPoint.position - worldPos).sqrMagnitude;
-                if (d < best) { best = d; target = s; }
+                if (d < bestDist) { bestDist = d; best = s; }
             }
 
-            if (target == null ||
-                (target.SnapPoint.position - worldPos).sqrMagnitude > maxSnapDistance * maxSnapDistance)
+            if (best == null)
             {
+                Debug.LogWarning("[SNAP] Tidak menemukan slot terdekat sama sekali.");
                 SyncTransformOnly();
                 return;
             }
+
+            float maxDistSqr = maxSnapDistance * maxSnapDistance;
+            if (bestDist > maxDistSqr)
+            {
+                Debug.LogWarning($"[SNAP] Terdekat slot {best.Index} tapi JAUH (distSqr={bestDist:F3} > maxSqr={maxDistSqr:F3}). Tidak snap.");
+                SyncTransformOnly();
+                return;
+            }
+
+            Debug.Log($"[SNAP] Fallback nearest => slot {best.Index} distSqr={bestDist:F4} (OK <= {maxDistSqr:F4})");
         }
 
-        // Apply snap
-        transform.position = target.SnapPoint.position;
-        if (orientToSnapPoint) transform.rotation = target.SnapPoint.rotation;
+        ApplySnapToSlot(best);
+        _candidateIndices.Clear();
+    }
 
+    // ======= CORE: Terapkan snap ke slot =======
+    void ApplySnapToSlot(OrbitSlot slot)
+    {
+        if (!IsServer || slot == null || slot.SnapPoint == null)
+        {
+            Debug.LogWarning($"[APPLY SNAP] Gagal: server={IsServer}, slot={(slot?._GetName() ?? "NULL")}, snap={(slot?.SnapPoint ? "OK" : "NULL")}");
+            return;
+        }
+
+        if (_rb)
+        {
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = true;      // kunci fisika saat snap
+            SetKinematicClientRpc(true); // samakan di semua klien
+        }
+
+        transform.position = slot.SnapPoint.position;
+        if (orientToSnapPoint) transform.rotation = slot.SnapPoint.rotation;
+
+        // set index orbit saat ini
+        CurrentOrbitIndex.Value = slot.Index;
+
+        // mulai orbit keliling slot
+        StartOrbitAround(slot);
+
+        // sinkron ke klien
         NetPos.Value = transform.position;
         NetRot.Value = transform.rotation;
-        CurrentOrbitIndex.Value = target.Index;
 
-        StartOrbitAround(target);
-        try { target.BlinkFeedback(); } catch { /* opsional */ }
+        // (opsional) efek visual slot
+        try { slot.BlinkFeedback(); } catch { /* ignore if not implemented */ }
 
-        // kembalikan ownership ke server (jaga konsistensi)
+        // ownership balik ke server agar state konsisten
         if (IsSpawned && NetworkObject.OwnerClientId != NetworkManager.ServerClientId)
             NetworkObject.ChangeOwnership(NetworkManager.ServerClientId);
 
-        _candidateOrbitIndices.Clear();
+        Debug.Log($"[Snap] {PlanetName} tersnap ke slot {slot.Index} @ {transform.position}");
     }
 
-    void SyncTransformOnly()
-    {
-        if (!IsServer) return; // penting: hanya server yang boleh menulis
-        NetPos.Value = transform.position;
-        NetRot.Value = transform.rotation;
-    }
-
-    // ---------- Orbit helpers ----------
-    /// <summary>Panggil setelah planet disnap ke slot.</summary>
+    // ===== Orbit helpers =====
     public void StartOrbitAround(OrbitSlot slot)
     {
-        currentSlot = slot;
+        _currentSlot = slot;
 
         Vector3 center = slot.transform.position;
         _orbitRadius = Vector3.Distance(center, transform.position);
 
-        // sudut awal dari posisi sekarang relatif ke pusat (plane XZ)
-        Vector3 local = (transform.position - center);
+        Vector3 local = transform.position - center;
         _orbitAngleDeg = Mathf.Atan2(local.z, local.x) * Mathf.Rad2Deg;
-
-        if (IsServer) CurrentOrbitIndex.Value = slot.Index;
     }
 
-    public void StopOrbit()
+    public void StopOrbit() { _currentSlot = null; }
+
+    void SyncTransformOnly()
     {
-        currentSlot = null;
+        NetPos.Value = transform.position;
+        NetRot.Value = transform.rotation;
     }
+
+    // ===== Ownership helper =====
     [ServerRpc(RequireOwnership = false)]
-    public void SetTransformServerRpc(Vector3 pos, Quaternion rot)
+    void RequestOwnershipServerRpc(ulong clientId)
+    {
+        if (IsSpawned) NetworkObject.ChangeOwnership(clientId);
+    }
+
+    // ======== Grab state & kinematic sync ========
+    [ServerRpc(RequireOwnership = false)]
+    void SetGrabStateServerRpc(bool grabbed)
+    {
+        _svGrabbed = grabbed;
+
+        if (_rb) _rb.isKinematic = grabbed; // server-side
+        SetKinematicClientRpc(grabbed);     // samakan ke semua klien
+
+        if (grabbed) StopOrbit();
+        // saat dilepas, orbit akan dimulai lagi ketika ApplySnapToSlot dipanggil
+    }
+
+    [ClientRpc]
+    void SetKinematicClientRpc(bool kinematic)
+    {
+        if (_rb) _rb.isKinematic = kinematic;
+    }
+
+    // ===== Debug Utils =====
+    void DumpSlotsOnServer()
     {
         if (!IsServer) return;
-        transform.SetPositionAndRotation(pos, rot);
-        NetPos.Value = pos;
-        NetRot.Value = rot;
+        var arr = FindObjectsOfType<OrbitSlot>(true);
+        Debug.Log($"[SLOTS DUMP][SV] count={arr.Length}  manager.slots={(manager && manager.slots != null ? manager.slots.Length : -1)}");
+        foreach (var s in arr.OrderBy(x => x.Index))
+        {
+            Debug.Log($" - slot {s.Index} snap={(s.SnapPoint ? "OK" : "NULL")} pos={(s.SnapPoint ? s.SnapPoint.position : s.transform.position)}");
+        }
     }
-    public void ServerSetTransform(Vector3 pos, Quaternion rot)
+
+    void OnDrawGizmosSelected()
     {
-        if (!IsServer) return;
-        transform.SetPositionAndRotation(pos, rot);
-        NetPos.Value = pos;
-        NetRot.Value = rot;
+        // bantu visual jarak snap
+        Gizmos.color = new Color(0, 1, 0, 0.25f);
+        Gizmos.DrawWireSphere(transform.position, maxSnapDistance);
     }
+}
+
+// helper kecil untuk debug null-safe
+static class _OrbitSlotDbgExt
+{
+    public static string _GetName(this OrbitSlot s) => s ? s.name : "NULL";
 }

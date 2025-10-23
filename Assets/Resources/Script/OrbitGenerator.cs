@@ -1,12 +1,5 @@
 ﻿using UnityEngine;
 using System.Linq;
-using System.Collections.Generic;
-using Unity.Netcode;
-
-#if UNITY_EDITOR
-using UnityEditor;
-using UnityEditor.SceneManagement;
-#endif
 
 [ExecuteInEditMode]
 public class OrbitGenerator : MonoBehaviour
@@ -61,41 +54,21 @@ public class OrbitGenerator : MonoBehaviour
     public SolarGameManager gameManager;
 
     // ======== PUBLIC BUTTONS ========
-    public void GenerateAll()
-    {
-        PrepareParentsAndFit();
-        GenerateOrbitsInternal();
-        GeneratePlanetsInternal();
-        AutoAssignToManager();
-    }
-
-    public void GenerateOrbits()
-    {
-        PrepareParentsAndFit();
-        GenerateOrbitsInternal();
-    }
-
-    public void GeneratePlanets()
-    {
-        PrepareParentsAndFit();
-        GeneratePlanetsInternal();
-        AutoAssignToManager();
-    }
+    public void GenerateAll() { PrepareParentsAndFit(); GenerateOrbitsInternal(); GeneratePlanetsInternal(); AutoAssignToManager(); }
+    public void GenerateOrbits() { PrepareParentsAndFit(); GenerateOrbitsInternal(); }
+    public void GeneratePlanets() { PrepareParentsAndFit(); GeneratePlanetsInternal(); AutoAssignToManager(); }
 
     public void AutoAssignToManager()
     {
         var mgr = GetOrFindManager(); if (!mgr) return;
-        var planets = planetsParent ? planetsParent.GetComponentsInChildren<Planet>(true) : new Planet[0];
-        var slots = orbitParent ? orbitParent.GetComponentsInChildren<OrbitSlot>(true) : new OrbitSlot[0];
+        var planets = planetsParent.GetComponentsInChildren<Planet>(true);
+        var slots = orbitParent.GetComponentsInChildren<OrbitSlot>(true);
         mgr.planets = planets.OrderBy(p => p.IdUrutanBenar).ToArray();
         mgr.slots = slots.OrderBy(s => s.Index).ToArray();
-
 #if UNITY_EDITOR
-        EditorUtility.SetDirty(mgr);
-        if (mgr.gameObject.scene.IsValid())
-            EditorSceneManager.MarkSceneDirty(mgr.gameObject.scene);
+        UnityEditor.EditorUtility.SetDirty(mgr);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(mgr.gameObject.scene);
 #endif
-
         Debug.Log($"[OrbitGenerator] Assign ke GameManager: {mgr.planets.Length} planets, {mgr.slots.Length} slots");
     }
 
@@ -106,7 +79,8 @@ public class OrbitGenerator : MonoBehaviour
 
         if (fitToTable)
         {
-            GetTableInfo(out var center, out var sizeXZ, out var topY);
+            Vector3 center; Vector2 sizeXZ; float topY;
+            GetTableInfo(out center, out sizeXZ, out topY);
 
             orbitParent.position = new Vector3(center.x, topY + topSurfaceYOffset, center.z);
             orbitParent.rotation = Quaternion.Euler(0f, tableRoot ? tableRoot.eulerAngles.y : 0f, 0f);
@@ -120,8 +94,6 @@ public class OrbitGenerator : MonoBehaviour
 
     void GenerateOrbitsInternal()
     {
-        if (!orbitParent) EnsureParents();
-
         // Bersihkan orbit lama
         for (int i = orbitParent.childCount - 1; i >= 0; i--)
             DestroyImmediate(orbitParent.GetChild(i).gameObject);
@@ -145,6 +117,7 @@ public class OrbitGenerator : MonoBehaviour
 
             // material/warna/alignment (hindari pink di mobile/URP)
             line.material = EnsureOrbitMaterial();
+            // set color untuk shader Unlit/Color; untuk URP/Unlit warna di _BaseColor (di-set saat buat material)
             line.startColor = orbitColor;
             line.endColor = orbitColor;
             line.textureMode = LineTextureMode.Stretch;
@@ -229,8 +202,6 @@ public class OrbitGenerator : MonoBehaviour
 
     void GeneratePlanetsInternal()
     {
-        if (!planetsParent) EnsureParents();
-
         if ((planetPrefabs == null || planetPrefabs.Length == 0) && !defaultPlanetPrefab)
         {
             Debug.LogError("[OrbitGenerator] Planet Prefab belum diisi.");
@@ -250,11 +221,10 @@ public class OrbitGenerator : MonoBehaviour
             )
         );
 
-        var slots = orbitParent ? orbitParent.GetComponentsInChildren<OrbitSlot>(true).OrderBy(s => s.Index).ToArray()
-                               : new OrbitSlot[0];
+        var slots = orbitParent.GetComponentsInChildren<OrbitSlot>(true).OrderBy(s => s.Index).ToArray();
 
         // anti-duplikat nama
-        var nameCounter = new Dictionary<string, int>();
+        var nameCounter = new System.Collections.Generic.Dictionary<string, int>();
 
         for (int idx = 0; idx < count; idx++)
         {
@@ -305,38 +275,17 @@ public class OrbitGenerator : MonoBehaviour
 
             go.transform.SetPositionAndRotation(pos, rot);
 
-            // Planet.cs config & sinkronisasi aman
+            // Planet.cs config
             var planet = go.GetComponent<Planet>();
             if (planet)
             {
                 planet.PlanetName = finalName;
-                planet.IdUrutanBenar = idx + 1;
+                planet.IdUrutanBenar = idx + 1; // urutan benar mengikuti urutan prefab / generate
                 if (!planet.manager) planet.manager = GetOrFindManager();
-
-                // ====== SINKRONISASI AMAN ======
-                if (!Application.isPlaying)
-                {
-                    // EDIT MODE: cukup transform lokal. Jangan sentuh network variables / RPC.
-                }
-                else
-                {
-                    // PLAY MODE:
-                    // - Jika server/host → set langsung di server (tanpa RPC).
-                    // - Jika client → minta server via ServerRpc.
-                    var nm = NetworkManager.Singleton;
-                    bool isServerActive = nm && nm.IsServer;
-
-                    if (isServerActive)
-                    {
-                        // pastikan object sudah punya NetworkObject & spawned jika butuh
-                        planet.ServerSetTransform(pos, rot); // method di Planet (server-only)
-                    }
-                    else
-                    {
-                        // client → mintakan ke server
-                        planet.SetTransformServerRpc(pos, rot); // RequireOwnership=false
-                    }
-                }
+#if UNITY_EDITOR
+                planet.NetPos.Value = go.transform.position;
+                planet.NetRot.Value = go.transform.rotation;
+#endif
             }
             else
             {
@@ -424,3 +373,4 @@ public class OrbitGenerator : MonoBehaviour
         return orbitLineMaterial;
     }
 }
+
