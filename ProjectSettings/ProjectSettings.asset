@@ -268,7 +268,7 @@ PlayerSettings:
   AndroidTargetArchitectures: 2
   AndroidSplashScreenScale: 0
   androidSplashScreen: {fileID: 0}
-  AndroidKeystoreName: F:/KeyStore/MixedReality_PKM/user.keystore
+  AndroidKeystoreName: E:/KeyStore/MixedReality_PKM/user.keystore
   AndroidKeyaliasName: user
   AndroidEnableArmv9SecurityFeatures: 0
   AndroidEnableArm64MTE: 0
